@@ -1,0 +1,33 @@
+{
+  "nodes": [
+    {
+      "id": "fetch_logs",
+      "name": "Fetch Error Logs",
+      "type": "script",
+      "action": "sleep 0.3 && echo '[ERROR] Connection timeout at DB_HOST:3306 in service order-api'"
+    },
+    {
+      "id": "fetch_metrics",
+      "name": "Fetch System Metrics",
+      "type": "script",
+      "action": "sleep 0.5 && echo 'CPU=94%, Mem=78%, ActiveConnections=312'"
+    },
+    {
+      "id": "fetch_db_status",
+      "name": "Fetch DB Status",
+      "type": "script",
+      "action": "sleep 0.2 && echo 'Pool: active=50/50, idle=0, pending=127, timeouts=342'"
+    },
+    {
+      "id": "summarize",
+      "name": "Summarize (Script Mock)",
+      "type": "script",
+      "action": "echo 'Mock summary: all facts collected successfully.'"
+    }
+  ],
+  "edges": [
+    { "from": "fetch_logs", "to": "summarize" },
+    { "from": "fetch_metrics", "to": "summarize" },
+    { "from": "fetch_db_status", "to": "summarize" }
+  ]
+}

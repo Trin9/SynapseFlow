@@ -1,0 +1,29 @@
+# Synapse MCP Server Configuration
+# Each entry defines an MCP Server that the engine will discover and register tools from.
+#
+# Supported transport types: "stdio" (local process) and "sse" (remote HTTP)
+#
+# Example configuration:
+#
+# servers:
+#   - name: "db-query"
+#     description: "Database query MCP Server for PostgreSQL/MySQL"
+#     transport: "stdio"
+#     command: "python"
+#     args: ["scripts/mcp_servers/db_query_server.py"]
+#     env:
+#       DB_HOST: "localhost"
+#       DB_PORT: "5432"
+#
+#   - name: "log-search"
+#     description: "Elasticsearch log search MCP Server"
+#     transport: "sse"
+#     url: "http://localhost:9100/sse"
+#
+#   - name: "git-ops"
+#     description: "Git operations MCP Server"
+#     transport: "stdio"
+#     command: "npx"
+#     args: ["-y", "@anthropic/mcp-server-git", "--repo", "/path/to/repo"]
+
+servers: []

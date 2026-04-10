@@ -1,0 +1,33 @@
+{
+  "nodes": [
+    {
+      "id": "fetch_logs",
+      "name": "Fetch Error Logs",
+      "type": "script",
+      "action": "echo '[2026-04-09 10:23:45.123] ERROR service=order-api host=prod-sg-03 trace_id=abc123def456\n  java.sql.SQLTransientConnectionException: HikariPool-1 - Connection is not available, request timed out after 30000ms.\n    at com.zaxxer.hikari.pool.HikariPool.createTimeoutException(HikariPool.java:694)\n    at com.zaxxer.hikari.pool.HikariPool.getConnection(HikariPool.java:197)\n    at com.zaxxer.hikari.HikariDataSource.getConnection(HikariDataSource.java:100)\n    at com.example.order.service.OrderService.queryOrderStatus(OrderService.java:142)\n[2026-04-09 10:23:46.891] ERROR service=order-api host=prod-sg-03 trace_id=abc123def456\n  Connection timeout to MySQL master db-order-master.prod:3306 - pool exhausted (active=50/50, idle=0, waiting=127)\n[2026-04-09 10:23:47.002] ERROR service=order-api host=prod-sg-01 trace_id=xyz789ghi012\n  java.sql.SQLTransientConnectionException: HikariPool-1 - Connection is not available, request timed out after 30000ms.\n[2026-04-09 10:23:48.445] WARN  service=order-api host=prod-sg-02\n  Slow query detected: SELECT * FROM orders WHERE status=? AND created_at > ? took 28743ms'"
+    },
+    {
+      "id": "fetch_metrics",
+      "name": "Fetch System Metrics",
+      "type": "script",
+      "action": "echo '=== Host: prod-sg-03 (order-api) ===\nCPU Usage:       23% (normal)\nMemory Usage:    67% (normal)\nDisk I/O Wait:   2% (normal)\nNetwork In/Out:  145 Mbps / 89 Mbps\nActive Threads:  487 (elevated, baseline: ~200)\nGC Pause P99:    45ms (elevated, baseline: ~15ms)\n\n=== Host: db-order-master.prod (MySQL 8.0) ===\nCPU Usage:       94% (CRITICAL)\nMemory Usage:    78% (warning)\nDisk I/O Wait:   35% (CRITICAL)\nActive Connections: 312 (CRITICAL, max_connections=350)\nQueries/sec:     8,450 (3x normal baseline of ~2,800)\nSlow Queries:    47 in last 5 min (CRITICAL, baseline: <5)'"
+    },
+    {
+      "id": "fetch_db_status",
+      "name": "Fetch DB Connection Pool",
+      "type": "script",
+      "action": "echo '=== MySQL Connection Pool Status ===\nPool: HikariCP (order-api -> db-order-master.prod:3306)\n  Maximum Pool Size:  50\n  Active Connections: 50 (SATURATED)\n  Idle Connections:   0\n  Pending Requests:   127 (QUEUED)\n  Avg Acquire Time:   28,540ms (CRITICAL, threshold: 1000ms)\n  Connection Timeout: 30,000ms\n  Total Timeouts (5min): 342\n\n=== Recent Slow Queries (Top 3) ===\n1. SELECT * FROM orders WHERE status=\"pending\" AND created_at > \"2026-04-08\" — 28.7s (full table scan, missing index on created_at)\n2. SELECT o.*, d.* FROM orders o JOIN delivery d ON o.id=d.order_id WHERE o.region=\"SG\" — 15.2s (cross-join explosion)\n3. UPDATE orders SET status=\"processing\" WHERE id IN (SELECT id FROM orders WHERE ...) — 12.1s (subquery lock contention)'"
+    },
+    {
+      "id": "analyze_root_cause",
+      "name": "LLM Root Cause Analysis",
+      "type": "llm",
+      "action": "Analyze the following production incident data and determine the root cause.\n\n## Error Logs\n{{fetch_logs}}\n\n## System Metrics\n{{fetch_metrics}}\n\n## Database Connection Pool Status\n{{fetch_db_status}}\n\nBased ONLY on the above factual data, provide your root cause analysis as a JSON object."
+    }
+  ],
+  "edges": [
+    { "from": "fetch_logs", "to": "analyze_root_cause" },
+    { "from": "fetch_metrics", "to": "analyze_root_cause" },
+    { "from": "fetch_db_status", "to": "analyze_root_cause" }
+  ]
+}
