@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Visual SOP DAG Editor for Synapse Agentic Workflow Engine",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",

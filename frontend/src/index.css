@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* React Flow overrides */
+.react-flow__node {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.react-flow__attribution {
+  display: none;
+}
+
+/* Drag preview ghost */
+.dragging {
+  opacity: 0.5;
+}
