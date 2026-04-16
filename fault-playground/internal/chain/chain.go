@@ -10,6 +10,7 @@ const (
 	ServiceB ServiceName = "svc-b"
 	ServiceC ServiceName = "svc-c"
 	ServiceD ServiceName = "svc-d"
+	ServiceGateway ServiceName = "gateway"
 )
 
 // Request carries the minimal fields passed across the chain.

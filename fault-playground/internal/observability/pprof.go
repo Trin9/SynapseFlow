@@ -1,8 +1,15 @@
 package observability
 
-import "net/http"
+import (
+	"net/http"
+	"net/http/pprof"
+)
 
 // RegisterPProf registers pprof handlers on the given mux.
 func RegisterPProf(mux *http.ServeMux) {
-	_ = mux
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 }

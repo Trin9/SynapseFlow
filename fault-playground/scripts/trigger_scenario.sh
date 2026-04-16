@@ -9,4 +9,16 @@ if [[ -z "${SCENARIO_NAME}" ]]; then
   exit 1
 fi
 
-echo "trigger scenario: ${SCENARIO_NAME} (not implemented)"
+echo "Triggering scenario: ${SCENARIO_NAME} ..."
+
+SERVICES=("svc-a" "svc-b" "svc-c" "svc-d")
+
+for SVC in "${SERVICES[@]}"; do
+  echo "Setting scenario on ${SVC} ..."
+  curl -s -X POST "http://localhost:8080/admin/scenario" \
+    -H "Host: ${SVC}" \
+    -H "Content-Type: application/json" \
+    -d "{\"name\": \"${SCENARIO_NAME}\", \"fault\": \"${SCENARIO_NAME}\"}" || echo "Failed to reach ${SVC}"
+done
+
+echo "Scenario ${SCENARIO_NAME} triggered."
