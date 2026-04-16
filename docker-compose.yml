@@ -1,0 +1,84 @@
+# ---------------------------------------------------------------------------
+# Synapse — Full Stack Docker Compose
+# Usage:
+#   docker-compose up -d
+# Required env vars (copy .env.example → .env and fill in):
+#   LLM_API_KEY        — API key for LLM provider
+#   LLM_API_URL        — (optional) OpenAI-compatible endpoint
+#   LLM_MODEL          — (optional, default: gpt-4o-mini)
+#   LLM_PROVIDER       — openai | anthropic  (default: openai)
+#   SYNAPSE_API_KEYS   — comma-separated "key:role:subject" triples (leave blank for open/dev mode)
+#   SYNAPSE_SLACK_WEBHOOK_URL — (optional) default Slack webhook for execution notifications
+# ---------------------------------------------------------------------------
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: synapse-backend:latest
+    container_name: synapse-backend
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # LLM configuration
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_API_URL: ${LLM_API_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      # Fallback provider (optional)
+      LLM_FALLBACK_API_KEY: ${LLM_FALLBACK_API_KEY:-}
+      LLM_FALLBACK_PROVIDER: ${LLM_FALLBACK_PROVIDER:-}
+      LLM_FALLBACK_API_URL: ${LLM_FALLBACK_API_URL:-}
+      LLM_FALLBACK_MODEL: ${LLM_FALLBACK_MODEL:-}
+      # Security
+      SYNAPSE_API_KEYS: ${SYNAPSE_API_KEYS:-}
+      SYNAPSE_SLACK_WEBHOOK_URL: ${SYNAPSE_SLACK_WEBHOOK_URL:-}
+      SYNAPSE_DATABASE_URL: ${SYNAPSE_DATABASE_URL:-postgresql://synapse:synapse@postgres:5432/synapse?sslmode=disable}
+    volumes:
+      # Mount custom MCP server config (optional)
+      - ./backend/configs:/configs:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: synapse-frontend:latest
+    container_name: synapse-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: synapse-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: synapse
+      POSTGRES_PASSWORD: synapse
+      POSTGRES_DB: synapse
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U synapse"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres_data:
+    depends_on:
+      postgres:
+        condition: service_healthy

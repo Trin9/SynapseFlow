@@ -1,4 +1,4 @@
-.PHONY: run build test lint clean
+.PHONY: run build test lint clean migrate-up
 
 # Backend commands
 run:
@@ -32,10 +32,7 @@ docker-down:
 
 # Database
 migrate-up:
-	cd backend && migrate -path scripts/migrations -database "postgresql://synapse:synapse@localhost:5432/synapse?sslmode=disable" up
-
-migrate-down:
-	cd backend && migrate -path scripts/migrations -database "postgresql://synapse:synapse@localhost:5432/synapse?sslmode=disable" down
+	cd backend && SYNAPSE_DATABASE_URL="postgresql://synapse:synapse@localhost:5432/synapse?sslmode=disable" go run ./cmd/migrate up
 
 clean:
 	cd backend && rm -rf bin/

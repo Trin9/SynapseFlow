@@ -26,13 +26,14 @@ const (
 
 // DAGConfig represents a complete workflow definition.
 type DAGConfig struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description,omitempty"`
-	Nodes       []Node    `json:"nodes"`
-	Edges       []Edge    `json:"edges"`
-	CreatedAt   time.Time `json:"created_at,omitempty"`
-	UpdatedAt   time.Time `json:"updated_at,omitempty"`
+	ID          string            `json:"id"`
+	Name        string            `json:"name"`
+	Description string            `json:"description,omitempty"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
+	Nodes       []Node            `json:"nodes"`
+	Edges       []Edge            `json:"edges"`
+	CreatedAt   time.Time         `json:"created_at,omitempty"`
+	UpdatedAt   time.Time         `json:"updated_at,omitempty"`
 }
 
 // Node represents a single node in the DAG.
@@ -81,6 +82,15 @@ type Execution struct {
 	Error     string          `json:"error,omitempty"`
 }
 
+// ExecutionCheckpoint stores the persisted runtime state needed for resume.
+type ExecutionCheckpoint struct {
+	ExecutionID string                 `json:"execution_id"`
+	DAGID       string                 `json:"dag_id"`
+	State       map[string]interface{} `json:"state"`
+	LoopCounts  map[string]int         `json:"loop_counts"`
+	UpdatedAt   time.Time              `json:"updated_at"`
+}
+
 // NodeResult captures the execution outcome of a single node.
 type NodeResult struct {
 	NodeID    string        `json:"node_id"`
@@ -94,19 +104,57 @@ type NodeResult struct {
 	TokensOut int           `json:"tokens_out,omitempty"`
 }
 
+// Experience stores a reusable troubleshooting memory entry.
+type Experience struct {
+	ID          string    `json:"id"`
+	AlertType   string    `json:"alert_type,omitempty"`
+	ServiceName string    `json:"service_name,omitempty"`
+	Tags        []string  `json:"tags,omitempty"`
+	Symptom     string    `json:"symptom,omitempty"`
+	RootCause   string    `json:"root_cause,omitempty"`
+	ActionTaken string    `json:"action_taken,omitempty"`
+	Summary     string    `json:"summary,omitempty"`
+	Document    string    `json:"document,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	Score       float64   `json:"score,omitempty"`
+
+	Embedding []float64 `json:"-"`
+}
+
 // ---------------------------------------------------------------------------
 // GlobalState: Thread-safe state shared across all nodes in an execution.
 // ---------------------------------------------------------------------------
 
 // GlobalState holds key-value pairs accumulated during workflow execution.
 type GlobalState struct {
-	mu   sync.RWMutex
-	data map[string]interface{}
+	mu         sync.RWMutex
+	data       map[string]interface{}
+	loopCounts map[string]int
 }
 
 // NewGlobalState creates an empty GlobalState.
 func NewGlobalState() *GlobalState {
-	return &GlobalState{data: make(map[string]interface{})}
+	return &GlobalState{
+		data:       make(map[string]interface{}),
+		loopCounts: make(map[string]int),
+	}
+}
+
+// NewGlobalStateFromSnapshot recreates a state object from persisted snapshots.
+func NewGlobalStateFromSnapshot(data map[string]interface{}, loopCounts map[string]int) *GlobalState {
+	state := NewGlobalState()
+	if data != nil {
+		state.Merge(data)
+	}
+	if loopCounts != nil {
+		state.mu.Lock()
+		for key, value := range loopCounts {
+			state.loopCounts[key] = value
+		}
+		state.mu.Unlock()
+	}
+	return state
 }
 
 // Set stores a value by key (thread-safe).
@@ -148,6 +196,25 @@ func (s *GlobalState) Snapshot() map[string]interface{} {
 	return snap
 }
 
+// LoopCountsSnapshot returns a copy of loop counters for persistence.
+func (s *GlobalState) LoopCountsSnapshot() map[string]int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	snap := make(map[string]int, len(s.loopCounts))
+	for k, v := range s.loopCounts {
+		snap[k] = v
+	}
+	return snap
+}
+
+// Clone creates a deep copy of the state.
+func (s *GlobalState) Clone() *GlobalState {
+	if s == nil {
+		return nil
+	}
+	return NewGlobalStateFromSnapshot(s.Snapshot(), s.LoopCountsSnapshot())
+}
+
 // Merge patches multiple key-value pairs into the state.
 func (s *GlobalState) Merge(kv map[string]interface{}) {
 	s.mu.Lock()
@@ -155,4 +222,19 @@ func (s *GlobalState) Merge(kv map[string]interface{}) {
 	for k, v := range kv {
 		s.data[k] = v
 	}
+}
+
+// IncrementLoopCount increments the loop count for a node and returns the new count.
+func (s *GlobalState) IncrementLoopCount(nodeID string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.loopCounts[nodeID]++
+	return s.loopCounts[nodeID]
+}
+
+// GetLoopCount returns the current loop count for a node.
+func (s *GlobalState) GetLoopCount(nodeID string) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.loopCounts[nodeID]
 }

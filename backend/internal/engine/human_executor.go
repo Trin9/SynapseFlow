@@ -26,7 +26,8 @@ func (e *HumanExecutor) Execute(ctx context.Context, node models.Node, state *mo
 		}
 	}
 
-	output := fmt.Sprintf("[Human Review Checkpoint] %s — auto-approved (placeholder)", instructions)
+	// In M2, we mark as suspended and wait for API resume
+	output := fmt.Sprintf("[Human Review Required] %s", instructions)
 
 	state.Set(node.ID, output)
 
@@ -34,40 +35,7 @@ func (e *HumanExecutor) Execute(ctx context.Context, node models.Node, state *mo
 		NodeID:   node.ID,
 		NodeName: node.Name,
 		NodeType: node.Type,
-		Status:   "success",
-		Output:   output,
-		Duration: time.Since(start),
-	}
-}
-
-// ---------------------------------------------------------------------------
-// RouterExecutor: Conditional routing node (M2 full implementation)
-// ---------------------------------------------------------------------------
-
-// RouterExecutor is a placeholder that evaluates simple conditions.
-// In M2, this will support JSON Path expressions and dynamic branching.
-type RouterExecutor struct{}
-
-func (e *RouterExecutor) Execute(ctx context.Context, node models.Node, state *models.GlobalState) models.NodeResult {
-	start := time.Now()
-
-	// Render the action template to get the routing expression
-	expression := RenderTemplate(node.Action, state)
-	if expression == "" && node.Config != nil {
-		if expr, ok := node.Config["expression"].(string); ok {
-			expression = RenderTemplate(expr, state)
-		}
-	}
-
-	output := fmt.Sprintf("[Router] Evaluated: %s — all branches enabled (placeholder)", expression)
-
-	state.Set(node.ID, output)
-
-	return models.NodeResult{
-		NodeID:   node.ID,
-		NodeName: node.Name,
-		NodeType: node.Type,
-		Status:   "success",
+		Status:   string(models.StatusSuspended),
 		Output:   output,
 		Duration: time.Since(start),
 	}

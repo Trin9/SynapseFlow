@@ -20,7 +20,7 @@ func allExecutors() map[models.NodeType]NodeExecutor {
 }
 
 func TestScheduler_ScriptExecution(t *testing.T) {
-	scheduler := NewScheduler(allExecutors())
+	scheduler := NewScheduler(allExecutors(), nil)
 
 	dag := &models.DAGConfig{
 		ID:   "test-1",
@@ -34,7 +34,7 @@ func TestScheduler_ScriptExecution(t *testing.T) {
 		},
 	}
 
-	result := scheduler.Execute(context.Background(), dag)
+	result := scheduler.Execute(context.Background(), dag, nil, nil)
 
 	if result.Err != nil {
 		t.Fatalf("unexpected error: %v", result.Err)
@@ -62,7 +62,7 @@ func TestScheduler_ScriptExecution(t *testing.T) {
 }
 
 func TestScheduler_ConfigCommand(t *testing.T) {
-	scheduler := NewScheduler(allExecutors())
+	scheduler := NewScheduler(allExecutors(), nil)
 
 	dag := &models.DAGConfig{
 		ID:   "test-2",
@@ -80,7 +80,7 @@ func TestScheduler_ConfigCommand(t *testing.T) {
 		Edges: []models.Edge{},
 	}
 
-	result := scheduler.Execute(context.Background(), dag)
+	result := scheduler.Execute(context.Background(), dag, nil, nil)
 
 	if result.Err != nil {
 		t.Fatalf("unexpected error: %v", result.Err)
@@ -97,7 +97,7 @@ func TestScheduler_ConfigCommand(t *testing.T) {
 }
 
 func TestScheduler_ConcurrentExecution(t *testing.T) {
-	scheduler := NewScheduler(allExecutors())
+	scheduler := NewScheduler(allExecutors(), nil)
 
 	dag := &models.DAGConfig{
 		ID:   "test-3",
@@ -116,7 +116,7 @@ func TestScheduler_ConcurrentExecution(t *testing.T) {
 		},
 	}
 
-	result := scheduler.Execute(context.Background(), dag)
+	result := scheduler.Execute(context.Background(), dag, nil, nil)
 
 	if result.Err != nil {
 		t.Fatalf("unexpected error: %v", result.Err)
@@ -140,7 +140,7 @@ func TestScheduler_ConcurrentExecution(t *testing.T) {
 }
 
 func TestScheduler_MockLLMExecution(t *testing.T) {
-	scheduler := NewScheduler(allExecutors())
+	scheduler := NewScheduler(allExecutors(), nil)
 
 	dag := &models.DAGConfig{
 		ID:   "test-4",
@@ -154,7 +154,7 @@ func TestScheduler_MockLLMExecution(t *testing.T) {
 		},
 	}
 
-	result := scheduler.Execute(context.Background(), dag)
+	result := scheduler.Execute(context.Background(), dag, nil, nil)
 
 	if result.Err != nil {
 		t.Fatalf("unexpected error: %v", result.Err)
@@ -174,7 +174,7 @@ func TestScheduler_MockLLMExecution(t *testing.T) {
 }
 
 func TestScheduler_NoCommandError(t *testing.T) {
-	scheduler := NewScheduler(allExecutors())
+	scheduler := NewScheduler(allExecutors(), nil)
 
 	dag := &models.DAGConfig{
 		ID:   "test-5",
@@ -185,7 +185,7 @@ func TestScheduler_NoCommandError(t *testing.T) {
 		Edges: []models.Edge{},
 	}
 
-	result := scheduler.Execute(context.Background(), dag)
+	result := scheduler.Execute(context.Background(), dag, nil, nil)
 
 	if result.Err != nil {
 		t.Fatalf("unexpected execution-level error: %v", result.Err)
@@ -201,7 +201,7 @@ func TestScheduler_NoCommandError(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestScheduler_DownstreamSkipOnFailure(t *testing.T) {
-	scheduler := NewScheduler(allExecutors())
+	scheduler := NewScheduler(allExecutors(), nil)
 
 	// Linear: s1 (fails) -> s2 -> s3
 	// s2 and s3 should be skipped
@@ -219,7 +219,7 @@ func TestScheduler_DownstreamSkipOnFailure(t *testing.T) {
 		},
 	}
 
-	result := scheduler.Execute(context.Background(), dag)
+	result := scheduler.Execute(context.Background(), dag, nil, nil)
 
 	if result.Err != nil {
 		t.Fatalf("unexpected execution-level error: %v", result.Err)
@@ -252,7 +252,7 @@ func TestScheduler_DownstreamSkipOnFailure(t *testing.T) {
 }
 
 func TestScheduler_PartialFailure_DiamondGraph(t *testing.T) {
-	scheduler := NewScheduler(allExecutors())
+	scheduler := NewScheduler(allExecutors(), nil)
 
 	// Diamond: s1 -> s2 (fails), s3 (succeeds) -> s4
 	// s2 fails but s3 succeeds. s4 depends on both, so s4 should be skipped.
@@ -273,7 +273,7 @@ func TestScheduler_PartialFailure_DiamondGraph(t *testing.T) {
 		},
 	}
 
-	result := scheduler.Execute(context.Background(), dag)
+	result := scheduler.Execute(context.Background(), dag, nil, nil)
 	if result.Err != nil {
 		t.Fatalf("unexpected error: %v", result.Err)
 	}
@@ -299,7 +299,7 @@ func TestScheduler_PartialFailure_DiamondGraph(t *testing.T) {
 }
 
 func TestScheduler_HumanAndRouterNodes(t *testing.T) {
-	scheduler := NewScheduler(allExecutors())
+	scheduler := NewScheduler(allExecutors(), nil)
 
 	dag := &models.DAGConfig{
 		ID:   "test-all-types",
@@ -317,20 +317,29 @@ func TestScheduler_HumanAndRouterNodes(t *testing.T) {
 		},
 	}
 
-	result := scheduler.Execute(context.Background(), dag)
+	result := scheduler.Execute(context.Background(), dag, nil, nil)
 	if result.Err != nil {
 		t.Fatalf("unexpected error: %v", result.Err)
 	}
 
 	for _, r := range result.Results {
+		if r.NodeType == models.NodeTypeHuman {
+			if r.Status != string(models.StatusSuspended) {
+				t.Errorf("human node %s should suspend, got %s", r.NodeID, r.Status)
+			}
+			continue
+		}
 		if r.Status != "success" {
 			t.Errorf("node %s (%s) failed: %s", r.NodeID, r.NodeType, r.Error)
 		}
 	}
+	if result.Status != models.StatusSuspended {
+		t.Fatalf("expected workflow suspended, got %s", result.Status)
+	}
 }
 
 func TestScheduler_StressConcurrent(t *testing.T) {
-	scheduler := NewScheduler(allExecutors())
+	scheduler := NewScheduler(allExecutors(), nil)
 
 	// Run 50 graph executions concurrently to verify no data races.
 	// Each graph: A -> B, C -> D
@@ -360,7 +369,7 @@ func TestScheduler_StressConcurrent(t *testing.T) {
 				},
 			}
 
-			result := scheduler.Execute(context.Background(), dag)
+			result := scheduler.Execute(context.Background(), dag, nil, nil)
 			if result.Err != nil {
 				errors[idx] = result.Err
 				return

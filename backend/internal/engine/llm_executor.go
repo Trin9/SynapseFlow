@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/xunchenzheng/synapse/internal/llm"
@@ -59,6 +60,9 @@ func (e *LLMExecutor) Execute(ctx context.Context, node models.Node, state *mode
 
 	// Render user prompt with state values
 	userPrompt := RenderTemplate(promptTemplate, state)
+	if historicalContext := strings.TrimSpace(state.GetString("historical_context")); historicalContext != "" && !strings.Contains(userPrompt, historicalContext) {
+		userPrompt = strings.TrimSpace(userPrompt + "\n\nHistorical context:\n" + historicalContext)
+	}
 
 	messages := []llm.Message{
 		{Role: "system", Content: systemPrompt},
@@ -126,6 +130,9 @@ func (e *MockLLMExecutor) Execute(ctx context.Context, node models.Node, state *
 	}
 
 	userPrompt := RenderTemplate(promptTemplate, state)
+	if historicalContext := strings.TrimSpace(state.GetString("historical_context")); historicalContext != "" && !strings.Contains(userPrompt, historicalContext) {
+		userPrompt = strings.TrimSpace(userPrompt + "\n\nHistorical context:\n" + historicalContext)
+	}
 
 	mockResponse := fmt.Sprintf(`{
   "root_cause": "Mock analysis based on provided data",

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -132,6 +133,65 @@ func TestDAG_CRUD_And_Run(t *testing.T) {
 	delRec := do(t, s, http.MethodDelete, "/api/v1/dags/"+id, nil)
 	if delRec.Code != http.StatusOK {
 		t.Fatalf("delete expected 200, got %d: %s", delRec.Code, delRec.Body.String())
+	}
+}
+
+func TestExecutionStoresExperienceAndExposesListAPI(t *testing.T) {
+	s := NewServer()
+
+	dag := map[string]interface{}{
+		"name":        "memory dag",
+		"description": "latency analysis",
+		"metadata": map[string]interface{}{
+			"service_name": "payment-api",
+			"alert_type":   "latency",
+			"alert_text":   "payment-api latency p99 high",
+		},
+		"nodes": []map[string]interface{}{
+			{"id": "facts", "name": "Facts", "type": "script", "action": "echo connection pool exhausted"},
+			{"id": "analyze", "name": "Analyze", "type": "llm", "action": "Analyze {{facts}} for {{service_name}} {{alert_type}}"},
+		},
+		"edges": []map[string]interface{}{
+			{"from": "facts", "to": "analyze"},
+		},
+	}
+
+	runRec := doJSON(t, s, http.MethodPost, "/api/v1/run", dag)
+	if runRec.Code != http.StatusAccepted {
+		t.Fatalf("run expected 202, got %d: %s", runRec.Code, runRec.Body.String())
+	}
+	var runResp map[string]interface{}
+	if err := json.Unmarshal(runRec.Body.Bytes(), &runResp); err != nil {
+		t.Fatalf("unmarshal run: %v", err)
+	}
+	execID, _ := runResp["execution_id"].(string)
+	if execID == "" {
+		t.Fatal("expected execution_id")
+	}
+
+	_ = waitExecutionDone(t, s, execID)
+
+	var experiences []map[string]interface{}
+	for i := 0; i < 100; i++ {
+		time.Sleep(5 * time.Millisecond)
+		rec := do(t, s, http.MethodGet, "/api/v1/experiences", nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("experiences expected 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &experiences); err != nil {
+			t.Fatalf("unmarshal experiences: %v", err)
+		}
+		if len(experiences) > 0 {
+			break
+		}
+	}
+
+	if len(experiences) == 0 {
+		t.Fatal("expected at least one extracted experience")
+	}
+	document, _ := experiences[0]["document"].(string)
+	if !strings.Contains(document, "Execution State Snapshot") {
+		t.Fatalf("expected stored experience document, got %q", document)
 	}
 }
 
