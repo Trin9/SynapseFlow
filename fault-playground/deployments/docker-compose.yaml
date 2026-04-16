@@ -1,0 +1,15 @@
+version: "3.9"
+
+services:
+  gateway:
+    image: fault-playground-gateway
+    ports:
+      - "8080:8080"
+  svc-a:
+    image: fault-playground-svc-a
+  svc-b:
+    image: fault-playground-svc-b
+  svc-c:
+    image: fault-playground-svc-c
+  svc-d:
+    image: fault-playground-svc-d

@@ -1,0 +1,29 @@
+scenario:
+  name: kafka_consumer_stuck
+  category: engineering
+  description: consumer lag grows because commits are missing
+  trigger:
+    type: webhook_alert
+    alert_name: KafkaConsumerLagHigh
+    labels:
+      service: svc-d
+      auto_analyse: true
+  entrypoints:
+    - http://gateway:8080/demo/kafka?id=bad-user
+  observability:
+    logs:
+      query_template: '{trace_id="${trace_id}"}'
+    metrics:
+      - kafka_consumer_group_lag
+      - kafka_consumer_commit_total
+  git:
+    base_branch: main
+    bug_branch: bug/kafka-consumer-stuck
+    fix_branch: fix/kafka-consumer-stuck
+  report_contract:
+    must_include:
+      - symptom
+      - impact
+      - root_cause
+      - evidence
+      - fix_suggestion

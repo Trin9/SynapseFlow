@@ -1,0 +1,31 @@
+scenario:
+  name: cpu_hotloop
+  category: engineering
+  description: CPU usage spikes due to hot loop
+  trigger:
+    type: webhook_alert
+    alert_name: ServiceCPUHigh
+    labels:
+      service: svc-b
+      auto_analyse: true
+  entrypoints:
+    - http://gateway:8080/demo/hotloop?id=bad-user
+  observability:
+    logs:
+      query_template: '{trace_id="${trace_id}"}'
+    metrics:
+      - process_cpu_seconds_total
+      - go_goroutines
+    pprof:
+      enabled: true
+  git:
+    base_branch: main
+    bug_branch: bug/cpu-hotloop
+    fix_branch: fix/cpu-hotloop
+  report_contract:
+    must_include:
+      - symptom
+      - impact
+      - root_cause
+      - evidence
+      - fix_suggestion
