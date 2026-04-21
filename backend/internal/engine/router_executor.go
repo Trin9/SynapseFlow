@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/xunchenzheng/synapse/pkg/models"
+	"github.com/Trin9/SynapseFlow/backend/pkg/models"
 )
 
 // RouterExecutor evaluates a condition or expression and sets the result in GlobalState.

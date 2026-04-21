@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/xunchenzheng/synapse/internal/memory"
-	"github.com/xunchenzheng/synapse/pkg/logger"
-	"github.com/xunchenzheng/synapse/pkg/models"
+	"github.com/Trin9/SynapseFlow/backend/internal/memory"
+	"github.com/Trin9/SynapseFlow/backend/pkg/logger"
+	"github.com/Trin9/SynapseFlow/backend/pkg/models"
 )
 
 // ---------------------------------------------------------------------------
@@ -94,11 +94,9 @@ func (s *Scheduler) Execute(ctx context.Context, config *models.DAGConfig, initi
 
 	allResults := make([]models.NodeResult, 0, len(config.Nodes))
 	nodeResults := make(map[string]models.NodeResult)
-	if completedNodes != nil {
-		for id, res := range completedNodes {
-			nodeResults[id] = res
-			allResults = append(allResults, res)
-		}
+	for id, res := range completedNodes {
+		nodeResults[id] = res
+		allResults = append(allResults, res)
 	}
 	var resultsMu sync.Mutex
 	var nodesMu sync.RWMutex
@@ -132,6 +130,9 @@ func (s *Scheduler) Execute(ctx context.Context, config *models.DAGConfig, initi
 			_, done := nodeResults[node.ID]
 			nodesMu.RUnlock()
 			if !done {
+				if len(parsed.ConditionalDeps[node.ID]) > 0 && len(parsed.Deps[node.ID]) == 0 {
+					continue
+				}
 				remainingNodes = append(remainingNodes, node)
 			}
 		}
@@ -243,7 +244,12 @@ func (s *Scheduler) handleOutgoingEdges(
 	suspendedMu *sync.Mutex,
 ) {
 	log := logger.L()
+	type matchedEdge struct {
+		edge   models.Edge
+		target *models.Node
+	}
 
+	matches := make([]matchedEdge, 0)
 	for _, edge := range parsed.Edges {
 		if edge.From != node.ID || edge.Condition == "" {
 			continue
@@ -261,56 +267,64 @@ func (s *Scheduler) handleOutgoingEdges(
 			log.Errorw("Condition evaluation failed", "node_id", node.ID, "target_id", edge.To, "condition", edge.Condition, "error", err)
 			continue
 		}
+		if !met {
+			continue
+		}
 
-		if met {
-			targetNode, ok := parsed.NodeMap[edge.To]
-			if !ok {
-				continue
+		targetNode, ok := parsed.NodeMap[edge.To]
+		if !ok {
+			continue
+		}
+		matches = append(matches, matchedEdge{edge: edge, target: targetNode})
+	}
+
+	for _, match := range matches {
+		suspendedMu.Lock()
+		if *suspended {
+			suspendedMu.Unlock()
+			return
+		}
+		suspendedMu.Unlock()
+
+		targetNode := match.target
+		count := state.IncrementLoopCount(targetNode.ID)
+		if count > 3 {
+			log.Warnw("Circuit breaker triggered", "node_id", targetNode.ID, "count", count)
+			result := models.NodeResult{
+				NodeID:   targetNode.ID,
+				NodeName: targetNode.Name,
+				NodeType: targetNode.Type,
+				Status:   "error",
+				Error:    fmt.Sprintf("circuit breaker: max loop count (3) exceeded for node %s", targetNode.ID),
+				Duration: 0,
 			}
-
-			// Circuit breaker check
-			count := state.IncrementLoopCount(targetNode.ID)
-			if count > 3 {
-				log.Warnw("Circuit breaker triggered", "node_id", targetNode.ID, "count", count)
-				// Break the loop and mark as error
-				result := models.NodeResult{
-					NodeID:   targetNode.ID,
-					NodeName: targetNode.Name,
-					NodeType: targetNode.Type,
-					Status:   "error",
-					Error:    fmt.Sprintf("circuit breaker: max loop count (3) exceeded for node %s", targetNode.ID),
-					Duration: 0,
-				}
-				resultsMu.Lock()
-				*allResults = append(*allResults, result)
-				resultsMu.Unlock()
-				continue
-			}
-
-			log.Infow("Condition met, triggering downstream node", "from", node.ID, "to", targetNode.ID, "condition", edge.Condition, "loop_count", count)
-
-			// Execute the target node
-			result := s.executeOrSkip(ctx, *targetNode, state, parsed, failedNodes, failedMu)
-
-			nodesMu.Lock()
-			nodeResults[targetNode.ID] = result
-			nodesMu.Unlock()
-
 			resultsMu.Lock()
 			*allResults = append(*allResults, result)
 			resultsMu.Unlock()
+			continue
+		}
 
-			if result.Status == string(models.StatusSuspended) {
-				suspendedMu.Lock()
-				*suspended = true
-				suspendedMu.Unlock()
-				return
-			}
+		log.Infow("Condition met, triggering downstream node", "from", node.ID, "to", targetNode.ID, "condition", match.edge.Condition, "loop_count", count)
 
-			if result.Status == "success" {
-				// Recurse for the target node's outgoing edges
-				s.handleOutgoingEdges(ctx, *targetNode, state, parsed, currentLevel, allResults, resultsMu, failedNodes, failedMu, nodeResults, nodesMu, suspended, suspendedMu)
-			}
+		result := s.executeOrSkip(ctx, *targetNode, state, parsed, failedNodes, failedMu)
+
+		nodesMu.Lock()
+		nodeResults[targetNode.ID] = result
+		nodesMu.Unlock()
+
+		resultsMu.Lock()
+		*allResults = append(*allResults, result)
+		resultsMu.Unlock()
+
+		if result.Status == string(models.StatusSuspended) {
+			suspendedMu.Lock()
+			*suspended = true
+			suspendedMu.Unlock()
+			return
+		}
+
+		if result.Status == "success" {
+			s.handleOutgoingEdges(ctx, *targetNode, state, parsed, currentLevel, allResults, resultsMu, failedNodes, failedMu, nodeResults, nodesMu, suspended, suspendedMu)
 		}
 	}
 }

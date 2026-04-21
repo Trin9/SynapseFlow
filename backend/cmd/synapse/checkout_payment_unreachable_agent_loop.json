@@ -1,0 +1,99 @@
+{
+  "id": "deep-fault-lab-checkout-payment-unreachable-agent-loop",
+  "name": "deep-fault-lab-checkout-payment-unreachable-agent-loop",
+  "description": "A minimal bounded agent loop for checkout payment unreachable using planner-driven routing and parameterized hard nodes.",
+  "metadata": {
+    "scenario_id": "checkout_payment_unreachable",
+    "scenario_phase": "phase-a",
+    "service_name": "checkout",
+    "pattern": "bounded-agent-loop"
+  },
+  "nodes": [
+    {
+      "id": "replay_trigger",
+      "name": "Replay checkout payment unreachable",
+      "type": "script",
+      "action": "cd /home/trin/project/Synapse/deep-fault-lab/synapse && go run ./cmd/labctl replay checkout-payment-unreachable --mode grpc-direct --flag-source file --disable-after",
+      "config": {
+        "timeout_seconds": 120
+      }
+    },
+    {
+      "id": "plan_next_step",
+      "name": "Plan next bounded step",
+      "type": "llm",
+      "action": "You are given an incident packet and the latest retrieved evidence. Choose exactly one next action from: search_code, fetch_snippet, search_logs, finish_report. Prefer the smallest high-signal step. Never repeat the same log search when the latest log search result is empty. If a log search returns empty but the incident packet already contains a concrete error literal or suspect identifier, switch to code search using that literal. If code search already reveals a concrete suspect line or symbol, either fetch_snippet for that symbol or emit finish_report.\n\nIncident packet:\n{{replay_trigger}}\n\nLatest code search results:\n{{search_code}}\n\nLatest code snippet:\n{{fetch_snippet}}\n\nLatest log search results:\n{{search_logs}}\n\nReturn valid JSON with keys: next_action, reason, scope, query, service, symbol, line, done, report.",
+      "config": {
+        "json_mode": true,
+        "temperature": 0,
+        "state_key": "plan",
+        "parse_json_output": true,
+        "json_defaults": {
+          "done": false,
+          "report": "",
+          "scope": "",
+          "query": "",
+          "service": "",
+          "symbol": "",
+          "line": 0
+        },
+        "required_json_keys": ["next_action", "done"],
+        "timeout_seconds": 90,
+        "system_prompt": "You are a bounded Synapse planner node. You must not invent tools or execute actions. Choose one allowed next action and emit strict JSON only. Use the repository mapping below: checkout code lives under src/checkout, checkout logs come from docker compose logs checkout, payment logs come from docker compose logs payment, flagd logs come from docker compose logs flagd. Your JSON must always include: next_action, done, reason, scope, query, service, symbol, line, report. If the latest retrieval output is empty, you must change strategy instead of repeating the same query. Do not choose the same search_logs action twice in a row unless the service or query materially changes. If the incident packet contains a concrete identifier such as lookup badAddress, prefer search_code in src/checkout for that identifier over another empty log search. If code search or snippet evidence is sufficient to explain the failure, emit finish_report with done=true and a concise report."
+      }
+    },
+    {
+      "id": "route_decision",
+      "name": "Route decision",
+      "type": "router",
+      "action": "{{plan.next_action}}"
+    },
+    {
+      "id": "search_code",
+      "name": "Search code by keyword",
+      "type": "script",
+      "action": "cd /home/trin/project/Synapse/deep-fault-lab && grep -RIn --exclude-dir .git -- '{{plan.query}}' '{{plan.scope}}' | head -n 20",
+      "config": {
+        "timeout_seconds": 30
+      }
+    },
+    {
+      "id": "fetch_snippet",
+      "name": "Fetch Go snippet",
+      "type": "script",
+      "action": "cd /home/trin/project/Synapse/deep-fault-lab/synapse && if [ '{{plan.line}}' != '0' ] && [ '{{plan.line}}' != 'null' ] && [ -n '{{plan.line}}' ]; then go run ./cmd/labctl snippet go --file '{{plan.scope}}' --line '{{plan.line}}' --context-lines 18; else go run ./cmd/labctl snippet go --file '{{plan.scope}}' --symbol '{{plan.symbol}}'; fi",
+      "config": {
+        "timeout_seconds": 30
+      }
+    },
+    {
+      "id": "search_logs",
+      "name": "Search service logs",
+      "type": "script",
+      "action": "cd /home/trin/project/Synapse/deep-fault-lab && docker compose logs --tail=120 '{{plan.service}}' | grep -n -- '{{plan.query}}' | tail -n 20 || true",
+      "config": {
+        "timeout_seconds": 30
+      }
+    },
+    {
+      "id": "final_report",
+      "name": "Emit final report",
+      "type": "script",
+      "action": "printf '%s\n' '{{plan.report}}'",
+      "config": {
+        "timeout_seconds": 15
+      }
+    }
+  ],
+  "edges": [
+    { "from": "replay_trigger", "to": "plan_next_step" },
+    { "from": "plan_next_step", "to": "route_decision", "condition": "{{plan_next_step}}" },
+    { "from": "route_decision", "to": "search_code", "condition": "{{plan.next_action}} == search_code" },
+    { "from": "route_decision", "to": "fetch_snippet", "condition": "{{plan.next_action}} == fetch_snippet" },
+    { "from": "route_decision", "to": "search_logs", "condition": "{{plan.next_action}} == search_logs" },
+    { "from": "route_decision", "to": "final_report", "condition": "{{plan.done}} == true" },
+    { "from": "search_code", "to": "plan_next_step", "condition": "{{plan.done}} == false" },
+    { "from": "fetch_snippet", "to": "plan_next_step", "condition": "{{plan.done}} == false" },
+    { "from": "search_logs", "to": "plan_next_step", "condition": "{{plan.done}} == false" }
+  ]
+}

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/xunchenzheng/synapse/pkg/models"
+	"github.com/Trin9/SynapseFlow/backend/pkg/models"
 )
 
 func TestRetrieverInjectsHistoricalContext(t *testing.T) {

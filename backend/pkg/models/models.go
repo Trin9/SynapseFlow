@@ -1,7 +1,9 @@
 package models
 
 import (
+	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
@@ -178,11 +180,42 @@ func (s *GlobalState) GetString(key string) string {
 	if !ok {
 		return ""
 	}
-	str, ok := v.(string)
-	if !ok {
-		return fmt.Sprintf("%v", v)
+	return formatStateValue(v)
+}
+
+// GetPath retrieves a nested value using dotted-path notation such as "plan.next_action".
+func (s *GlobalState) GetPath(path string) (interface{}, bool) {
+	if path == "" {
+		return nil, false
 	}
-	return str
+
+	parts := strings.Split(path, ".")
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	current, ok := s.data[parts[0]]
+	if !ok {
+		return nil, false
+	}
+
+	for _, part := range parts[1:] {
+		next, ok := getNestedValue(current, part)
+		if !ok {
+			return nil, false
+		}
+		current = next
+	}
+
+	return current, true
+}
+
+// GetPathString retrieves a nested value and formats it as a string.
+func (s *GlobalState) GetPathString(path string) string {
+	v, ok := s.GetPath(path)
+	if !ok {
+		return ""
+	}
+	return formatStateValue(v)
 }
 
 // Snapshot returns a copy of the entire state (for serialization / logging).
@@ -237,4 +270,28 @@ func (s *GlobalState) GetLoopCount(nodeID string) int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.loopCounts[nodeID]
+}
+
+func getNestedValue(current interface{}, key string) (interface{}, bool) {
+	switch typed := current.(type) {
+	case map[string]interface{}:
+		value, ok := typed[key]
+		return value, ok
+	case map[string]string:
+		value, ok := typed[key]
+		return value, ok
+	default:
+		return nil, false
+	}
+}
+
+func formatStateValue(v interface{}) string {
+	str, ok := v.(string)
+	if ok {
+		return str
+	}
+	if data, err := json.Marshal(v); err == nil {
+		return string(data)
+	}
+	return fmt.Sprintf("%v", v)
 }

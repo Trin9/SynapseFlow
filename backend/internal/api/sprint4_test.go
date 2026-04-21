@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/xunchenzheng/synapse/internal/store"
+	"github.com/Trin9/SynapseFlow/backend/internal/store"
 )
 
 // ---------------------------------------------------------------------------

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/xunchenzheng/synapse/pkg/logger"
+	"github.com/Trin9/SynapseFlow/backend/pkg/logger"
 )
 
 // ---------------------------------------------------------------------------

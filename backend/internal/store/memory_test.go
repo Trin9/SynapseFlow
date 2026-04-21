@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/xunchenzheng/synapse/internal/audit"
-	"github.com/xunchenzheng/synapse/pkg/models"
+	"github.com/Trin9/SynapseFlow/backend/internal/audit"
+	"github.com/Trin9/SynapseFlow/backend/pkg/models"
 )
 
 func TestMemoryDAGStoreCRUD(t *testing.T) {

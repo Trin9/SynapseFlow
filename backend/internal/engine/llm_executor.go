@@ -2,12 +2,13 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
-	"github.com/xunchenzheng/synapse/internal/llm"
-	"github.com/xunchenzheng/synapse/pkg/models"
+	"github.com/Trin9/SynapseFlow/backend/internal/llm"
+	"github.com/Trin9/SynapseFlow/backend/pkg/models"
 )
 
 // ---------------------------------------------------------------------------
@@ -105,6 +106,11 @@ func (e *LLMExecutor) Execute(ctx context.Context, node models.Node, state *mode
 	result.Duration = time.Since(start)
 
 	state.Set(node.ID, resp.Content)
+	if err := writeStructuredLLMState(node, state, resp.Content); err != nil {
+		result.Status = "error"
+		result.Error = err.Error()
+		return result
+	}
 
 	return result
 }
@@ -152,6 +158,93 @@ func (e *MockLLMExecutor) Execute(ctx context.Context, node models.Node, state *
 	}
 
 	state.Set(node.ID, mockResponse)
+	if err := writeStructuredLLMState(node, state, mockResponse); err != nil {
+		result.Status = "error"
+		result.Error = err.Error()
+	}
 
 	return result
+}
+
+func writeStructuredLLMState(node models.Node, state *models.GlobalState, content string) error {
+	if node.Config == nil {
+		return nil
+	}
+
+	stateKey, _ := node.Config["state_key"].(string)
+	if stateKey == "" {
+		return nil
+	}
+
+	parseJSON, _ := node.Config["parse_json_output"].(bool)
+	if !parseJSON {
+		state.Set(stateKey, content)
+		return nil
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal([]byte(content), &parsed); err != nil {
+		return fmt.Errorf("failed to parse LLM output for state_key %q: %w", stateKey, err)
+	}
+	applyStructuredDefaults(node.Config, parsed)
+	if err := validateStructuredKeys(node.Config, parsed); err != nil {
+		return err
+	}
+	state.Set(stateKey, parsed)
+	return nil
+}
+
+func applyStructuredDefaults(config map[string]interface{}, parsed map[string]interface{}) {
+	defaults, ok := config["json_defaults"].(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	for key, value := range defaults {
+		existing, exists := parsed[key]
+		if exists && existing != nil {
+			if stringValue, ok := existing.(string); ok && strings.TrimSpace(stringValue) == "" {
+				parsed[key] = value
+				continue
+			}
+			continue
+		}
+		parsed[key] = value
+	}
+}
+
+func validateStructuredKeys(config map[string]interface{}, parsed map[string]interface{}) error {
+	rawKeys, ok := config["required_json_keys"]
+	if !ok {
+		return nil
+	}
+
+	keys := make([]string, 0)
+	switch typed := rawKeys.(type) {
+	case []string:
+		keys = append(keys, typed...)
+	case []interface{}:
+		for _, key := range typed {
+			keyStr, ok := key.(string)
+			if !ok || keyStr == "" {
+				continue
+			}
+			keys = append(keys, keyStr)
+		}
+	}
+
+	for _, key := range keys {
+		value, exists := parsed[key]
+		if !exists {
+			return fmt.Errorf("missing required LLM output key %q", key)
+		}
+		if value == nil {
+			return fmt.Errorf("missing required LLM output key %q", key)
+		}
+		if stringValue, ok := value.(string); ok && strings.TrimSpace(stringValue) == "" {
+			return fmt.Errorf("missing required LLM output key %q", key)
+		}
+	}
+
+	return nil
 }

@@ -12,11 +12,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Trin9/SynapseFlow/backend/pkg/logger"
 	"github.com/goccy/go-yaml"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/xunchenzheng/synapse/pkg/logger"
 )
 
 // ToolInfo is the API-facing description of an available MCP tool.

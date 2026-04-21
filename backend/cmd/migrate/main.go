@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/xunchenzheng/synapse/internal/config"
-	"github.com/xunchenzheng/synapse/internal/store"
+	"github.com/Trin9/SynapseFlow/backend/internal/config"
+	"github.com/Trin9/SynapseFlow/backend/internal/store"
 )
 
 func main() {

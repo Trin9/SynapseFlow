@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/Trin9/SynapseFlow/backend/internal/audit"
+	"github.com/Trin9/SynapseFlow/backend/internal/auth"
 	"github.com/gin-gonic/gin"
-	"github.com/xunchenzheng/synapse/internal/audit"
-	"github.com/xunchenzheng/synapse/internal/auth"
 )
 
 const identityKey = "synapse_identity"

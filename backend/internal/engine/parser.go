@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/xunchenzheng/synapse/pkg/models"
+	"github.com/Trin9/SynapseFlow/backend/pkg/models"
 )
 
 var (
@@ -29,6 +29,9 @@ type ParsedDAG struct {
 
 	// Dependents maps each node ID to the list of nodes that depend on it.
 	Dependents map[string][]string
+
+	// ConditionalDeps maps each node ID to the list of upstream nodes connected via conditional edges.
+	ConditionalDeps map[string][]string
 
 	// Edges holds all edges from the original config.
 	Edges []models.Edge
@@ -61,11 +64,13 @@ func ParseDAG(config *models.DAGConfig) (*ParsedDAG, error) {
 	// Build adjacency structures for essential edges
 	deps := make(map[string][]string, len(config.Nodes))
 	dependents := make(map[string][]string, len(config.Nodes))
+	conditionalDeps := make(map[string][]string, len(config.Nodes))
 	inDegree := make(map[string]int, len(config.Nodes))
 
 	for _, n := range config.Nodes {
 		deps[n.ID] = nil
 		dependents[n.ID] = nil
+		conditionalDeps[n.ID] = nil
 		inDegree[n.ID] = 0
 	}
 
@@ -75,7 +80,9 @@ func ParseDAG(config *models.DAGConfig) (*ParsedDAG, error) {
 			deps[e.To] = append(deps[e.To], e.From)
 			dependents[e.From] = append(dependents[e.From], e.To)
 			inDegree[e.To]++
+			continue
 		}
+		conditionalDeps[e.To] = append(conditionalDeps[e.To], e.From)
 	}
 
 	// Kahn's algorithm: BFS-based topological sort producing execution levels
@@ -123,10 +130,11 @@ func ParseDAG(config *models.DAGConfig) (*ParsedDAG, error) {
 	}
 
 	return &ParsedDAG{
-		Levels:     levels,
-		NodeMap:    nodeMap,
-		Deps:       deps,
-		Dependents: dependents,
-		Edges:      config.Edges,
+		Levels:          levels,
+		NodeMap:         nodeMap,
+		Deps:            deps,
+		Dependents:      dependents,
+		ConditionalDeps: conditionalDeps,
+		Edges:           config.Edges,
 	}, nil
 }

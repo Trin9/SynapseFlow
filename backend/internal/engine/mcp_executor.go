@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/xunchenzheng/synapse/internal/mcp"
-	"github.com/xunchenzheng/synapse/pkg/models"
+	"github.com/Trin9/SynapseFlow/backend/internal/mcp"
+	"github.com/Trin9/SynapseFlow/backend/pkg/models"
 )
 
 // MCPExecutor executes an MCP tool call node.

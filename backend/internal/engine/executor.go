@@ -4,7 +4,7 @@ import (
 	"context"
 	"regexp"
 
-	"github.com/xunchenzheng/synapse/pkg/models"
+	"github.com/Trin9/SynapseFlow/backend/pkg/models"
 )
 
 // ---------------------------------------------------------------------------
@@ -24,14 +24,14 @@ type NodeExecutor interface {
 // Template Rendering
 // ---------------------------------------------------------------------------
 
-var templateRegex = regexp.MustCompile(`\{\{(\w+)\}\}`)
+var templateRegex = regexp.MustCompile(`\{\{([A-Za-z0-9_\.]+)\}\}`)
 
 // RenderTemplate replaces {{key}} placeholders in a template string
 // with values from the GlobalState.
 func RenderTemplate(tmpl string, state *models.GlobalState) string {
 	return templateRegex.ReplaceAllStringFunc(tmpl, func(match string) string {
 		key := match[2 : len(match)-2]
-		val := state.GetString(key)
+		val := state.GetPathString(key)
 		if val != "" {
 			return val
 		}

@@ -1,4 +1,4 @@
-module github.com/xunchenzheng/synapse
+module github.com/Trin9/SynapseFlow/backend
 
 go 1.25.0
 

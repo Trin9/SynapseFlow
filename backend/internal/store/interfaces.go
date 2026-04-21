@@ -3,8 +3,8 @@ package store
 import (
 	"context"
 
-	"github.com/xunchenzheng/synapse/internal/audit"
-	"github.com/xunchenzheng/synapse/pkg/models"
+	"github.com/Trin9/SynapseFlow/backend/internal/audit"
+	"github.com/Trin9/SynapseFlow/backend/pkg/models"
 )
 
 type DAGStore interface {

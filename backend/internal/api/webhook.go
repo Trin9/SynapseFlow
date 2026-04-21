@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/Trin9/SynapseFlow/backend/pkg/models"
 	"github.com/gin-gonic/gin"
-	"github.com/xunchenzheng/synapse/pkg/models"
 )
 
 type alertPayload struct {

@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/xunchenzheng/synapse/internal/mcp"
+	"github.com/Trin9/SynapseFlow/backend/internal/mcp"
 )
 
 type fakeMCP struct{}

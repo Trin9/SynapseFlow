@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/xunchenzheng/synapse/internal/store"
-	"github.com/xunchenzheng/synapse/pkg/models"
+	"github.com/Trin9/SynapseFlow/backend/internal/store"
+	"github.com/Trin9/SynapseFlow/backend/pkg/models"
 )
 
 // ExperienceStore persists and retrieves troubleshooting memories.

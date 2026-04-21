@@ -8,8 +8,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/xunchenzheng/synapse/internal/api"
-	"github.com/xunchenzheng/synapse/pkg/logger"
+	"github.com/Trin9/SynapseFlow/backend/internal/api"
+	"github.com/Trin9/SynapseFlow/backend/pkg/logger"
 )
 
 func main() {

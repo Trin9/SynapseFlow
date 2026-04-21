@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
-	"github.com/xunchenzheng/synapse/pkg/models"
+	"github.com/Trin9/SynapseFlow/backend/pkg/models"
 )
 
 // allExecutors returns a standard set of executors for testing.
@@ -16,6 +17,53 @@ func allExecutors() map[models.NodeType]NodeExecutor {
 		models.NodeTypeLLM:    &MockLLMExecutor{},
 		models.NodeTypeHuman:  &HumanExecutor{},
 		models.NodeTypeRouter: &RouterExecutor{},
+	}
+}
+
+type sequentialPlannerExecutor struct {
+	mu        sync.Mutex
+	responses []string
+	callCount int
+}
+
+func (s *sequentialPlannerExecutor) Execute(ctx context.Context, node models.Node, state *models.GlobalState) models.NodeResult {
+	start := time.Now()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.callCount >= len(s.responses) {
+		return models.NodeResult{
+			NodeID:   node.ID,
+			NodeName: node.Name,
+			NodeType: node.Type,
+			Status:   "error",
+			Error:    "planner called more times than configured",
+			Duration: time.Since(start),
+		}
+	}
+
+	response := s.responses[s.callCount]
+	s.callCount++
+	state.Set(node.ID, response)
+	if err := writeStructuredLLMState(node, state, response); err != nil {
+		return models.NodeResult{
+			NodeID:   node.ID,
+			NodeName: node.Name,
+			NodeType: node.Type,
+			Status:   "error",
+			Error:    err.Error(),
+			Duration: time.Since(start),
+		}
+	}
+
+	return models.NodeResult{
+		NodeID:   node.ID,
+		NodeName: node.Name,
+		NodeType: node.Type,
+		Status:   "success",
+		Output:   response,
+		Duration: time.Since(start),
 	}
 }
 
@@ -171,6 +219,130 @@ func TestScheduler_MockLLMExecution(t *testing.T) {
 		t.Error("expected LLM node to produce output")
 	}
 	t.Logf("LLM output: %s", llmOut)
+}
+
+func TestScheduler_PlannerStateDrivesConditionalRouting(t *testing.T) {
+	executors := allExecutors()
+	executors[models.NodeTypeLLM] = &LLMExecutor{Client: &fakeLLMClient{response: `{"next_action":"search_code","scope":"src/checkout","query":"failed to charge card","done":false}`}}
+
+	scheduler := NewScheduler(executors, nil)
+	dag := &models.DAGConfig{
+		ID:   "test-planner-loop",
+		Name: "planner-loop",
+		Nodes: []models.Node{
+			{ID: "start", Name: "Start", Type: models.NodeTypeScript, Action: "echo incident"},
+			{
+				ID:     "planner",
+				Name:   "Planner",
+				Type:   models.NodeTypeLLM,
+				Action: "plan next step from {{start}}",
+				Config: map[string]interface{}{
+					"json_mode":         true,
+					"state_key":         "plan",
+					"parse_json_output": true,
+				},
+			},
+			{ID: "route", Name: "Route", Type: models.NodeTypeRouter, Action: "{{plan.next_action}}"},
+			{ID: "search", Name: "Search", Type: models.NodeTypeScript, Action: "echo scope={{plan.scope}} query={{plan.query}}"},
+		},
+		Edges: []models.Edge{
+			{From: "start", To: "planner"},
+			{From: "planner", To: "route"},
+			{From: "route", To: "search", Condition: "{{plan.next_action}} == search_code"},
+		},
+	}
+
+	result := scheduler.Execute(context.Background(), dag, nil, nil)
+	if result.Err != nil {
+		t.Fatalf("unexpected execution error: %v", result.Err)
+	}
+
+	if got := result.State.GetPathString("plan.next_action"); got != "search_code" {
+		t.Fatalf("expected structured planner state, got %q", got)
+	}
+
+	if got := result.State.GetString("route"); got != "search_code" {
+		t.Fatalf("expected router output search_code, got %q", got)
+	}
+
+	if got := result.State.GetString("search"); got != "scope=src/checkout query=failed to charge card" {
+		t.Fatalf("unexpected search output: %q", got)
+	}
+
+	if len(result.Results) != 4 {
+		t.Fatalf("expected 4 node results, got %d", len(result.Results))
+	}
+}
+
+func TestScheduler_MixedDependenciesSupportPlannerLoop(t *testing.T) {
+	planner := &sequentialPlannerExecutor{
+		responses: []string{
+			`{"next_action":"search_logs","service":"checkout","query":"lookup badAddress","done":false}`,
+			`{"next_action":"finish_report","report":"checkout fails because payment resolves badAddress","done":true}`,
+		},
+	}
+
+	executors := allExecutors()
+	executors[models.NodeTypeLLM] = planner
+
+	scheduler := NewScheduler(executors, nil)
+	dag := &models.DAGConfig{
+		ID:   "test-planner-mixed-deps-loop",
+		Name: "planner-mixed-deps-loop",
+		Nodes: []models.Node{
+			{ID: "start", Name: "Start", Type: models.NodeTypeScript, Action: "echo incident"},
+			{
+				ID:     "planner",
+				Name:   "Planner",
+				Type:   models.NodeTypeLLM,
+				Action: "plan next step",
+				Config: map[string]interface{}{
+					"json_mode":         true,
+					"state_key":         "plan",
+					"parse_json_output": true,
+				},
+			},
+			{ID: "route", Name: "Route", Type: models.NodeTypeRouter, Action: "{{plan.next_action}}"},
+			{ID: "search_logs", Name: "Search Logs", Type: models.NodeTypeScript, Action: "echo {{plan.service}}:{{plan.query}}"},
+			{ID: "final_report", Name: "Final Report", Type: models.NodeTypeScript, Action: "echo {{plan.report}}"},
+		},
+		Edges: []models.Edge{
+			{From: "start", To: "planner"},
+			{From: "planner", To: "route", Condition: "{{planner}}"},
+			{From: "route", To: "search_logs", Condition: "{{plan.next_action}} == search_logs"},
+			{From: "route", To: "final_report", Condition: "{{plan.done}} == true"},
+			{From: "search_logs", To: "planner", Condition: "{{plan.done}} == false"},
+		},
+	}
+
+	result := scheduler.Execute(context.Background(), dag, nil, nil)
+	if result.Err != nil {
+		t.Fatalf("unexpected execution error: %v", result.Err)
+	}
+
+	if planner.callCount != 2 {
+		t.Fatalf("expected planner to run twice, got %d", planner.callCount)
+	}
+
+	if got := result.State.GetString("search_logs"); got != "checkout:lookup badAddress" {
+		t.Fatalf("unexpected log search output: %q", got)
+	}
+
+	if got := result.State.GetPathString("plan.report"); got != "checkout fails because payment resolves badAddress" {
+		t.Fatalf("unexpected final report in state: %q", got)
+	}
+
+	if got := result.State.GetString("final_report"); got != "checkout fails because payment resolves badAddress" {
+		t.Fatalf("unexpected final report output: %q", got)
+	}
+
+	if len(result.Results) != 7 {
+		t.Fatalf("expected 7 node results for two planner cycles, got %d", len(result.Results))
+	}
+
+	if result.Status != models.StatusCompleted {
+		t.Fatalf("expected completed status, got %s", result.Status)
+	}
 }
 
 func TestScheduler_NoCommandError(t *testing.T) {
@@ -335,6 +507,52 @@ func TestScheduler_HumanAndRouterNodes(t *testing.T) {
 	}
 	if result.Status != models.StatusSuspended {
 		t.Fatalf("expected workflow suspended, got %s", result.Status)
+	}
+}
+
+func TestScheduler_ConditionalTargetsDoNotRunPrematurely(t *testing.T) {
+	scheduler := NewScheduler(allExecutors(), nil)
+
+	dag := &models.DAGConfig{
+		ID:   "test-conditional-routing",
+		Name: "conditional-routing",
+		Nodes: []models.Node{
+			{ID: "data", Name: "Get Flag", Type: models.NodeTypeScript, Action: "echo false"},
+			{ID: "route", Name: "Route", Type: models.NodeTypeRouter, Action: "{{data}}"},
+			{ID: "report", Name: "Report", Type: models.NodeTypeScript, Action: "echo routed-report"},
+			{ID: "review", Name: "Review", Type: models.NodeTypeHuman, Action: "review me"},
+		},
+		Edges: []models.Edge{
+			{From: "data", To: "route"},
+			{From: "route", To: "report", Condition: "{{route}} == false"},
+			{From: "route", To: "review", Condition: "{{route}} == true"},
+		},
+	}
+
+	result := scheduler.Execute(context.Background(), dag, nil, nil)
+	if result.Err != nil {
+		t.Fatalf("unexpected error: %v", result.Err)
+	}
+
+	resultMap := make(map[string]models.NodeResult)
+	for _, r := range result.Results {
+		resultMap[r.NodeID] = r
+	}
+
+	if resultMap["data"].Status != "success" {
+		t.Fatalf("expected data success, got %s", resultMap["data"].Status)
+	}
+	if resultMap["route"].Status != "success" {
+		t.Fatalf("expected route success, got %s", resultMap["route"].Status)
+	}
+	if resultMap["report"].Status != "success" {
+		t.Fatalf("expected report success, got %s", resultMap["report"].Status)
+	}
+	if _, ok := resultMap["review"]; ok {
+		t.Fatalf("review should not run when condition is false")
+	}
+	if result.Status != models.StatusCompleted {
+		t.Fatalf("expected workflow completed, got %s", result.Status)
 	}
 }
 

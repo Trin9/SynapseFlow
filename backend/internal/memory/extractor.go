@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xunchenzheng/synapse/pkg/models"
+	"github.com/Trin9/SynapseFlow/backend/pkg/models"
 )
 
 // Extractor distills a completed execution into a reusable troubleshooting memory.

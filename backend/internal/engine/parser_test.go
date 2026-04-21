@@ -3,7 +3,7 @@ package engine
 import (
 	"testing"
 
-	"github.com/xunchenzheng/synapse/pkg/models"
+	"github.com/Trin9/SynapseFlow/backend/pkg/models"
 )
 
 // ---------------------------------------------------------------------------

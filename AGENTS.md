@@ -8,8 +8,14 @@ If you are an AI developer or architect taking over the platform in the future, 
 We have completely abandoned the traditional Prompt Skill approach (such as the so-called Panic Analyzer), which relies on "thousands of words of natural language constraints, letting the large model call tools freely throughout the process." Large models are extremely expensive, slow, and prone to fatal hallucinations.
 
 **In Synapse:**
-* The LLM is a **Node**, not a **Scheduler**.
-* The scheduler is the robust Golang DAG Engine (Directed Acyclic Graph Engine).
+* The LLM is a **decision node**, not a free-form global **scheduler**.
+* The scheduler is the robust Golang DAG Engine (Directed Acyclic Graph Engine), which enforces allowed actions, routing constraints, and loop limits.
+
+This distinction is important:
+
+1. The LLM may decide **which bounded next action** should happen, such as whether to search code, search logs, request a snippet, or emit a report.
+2. The LLM must not become an unconstrained tool-calling agent that invents its own execution surface at runtime.
+3. The engine remains responsible for actual scheduling, execution, state transitions, circuit breaking, and human handoff.
 
 ## 2. Node Dualism: Hard Nodes vs. Soft Nodes
 
@@ -18,13 +24,16 @@ All nodes defined on the canvas are strictly divided into two categories:
 ### 2.1 Hard Nodes (Muscles and Limbs)
 * **Essence**: Do not call any LLMs; 100% deterministic code execution.
 * **Scope**: Executing Bash scripts, initiating MCP HTTP queries (querying DB/ES logs), running preset Python checking scripts, etc.
-* **Rule**: Upon encountering specific alert features (e.g., TraceID), the engine immediately and concurrently starts the corresponding hard nodes to fetch data. Token consumption in this process is 0, and the time spent ranges from milliseconds to seconds. Hard nodes must be prioritized to fetch all Facts.
+* **Rule**: Hard nodes execute deterministic data collection or actions. In some flows they may run eagerly when the alert signature already determines the first-round evidence; in other flows they may run only after a soft node emits a structured retrieval plan. Hard nodes are execution surfaces, not reasoning surfaces.
 
 ### 2.2 Soft Nodes (Brain and Senses)
 * **Essence**: Call LLM APIs (like Claude/GPT) to execute complex pattern recognition and reasoning.
-* **Trigger Timing**: Only triggered after hard nodes have finished executing and gathered enough solid evidence.
-* **Prompt Design Principle**: The Prompt for soft nodes should always be **"Based on the following collected facts, perform logical reasoning and root cause analysis"**, rather than "What else do you think needs to be checked? Please call a tool to check."
-* **Structured Output**: Soft nodes must forcefully output standardized JSON (such as conclusion type, root cause details, whether data is missing, etc.) so that the engine can proceed with conditional routing.
+* **Trigger Timing**: Soft nodes may run either after baseline evidence collection or immediately after an incident packet arrives, depending on whether the flow is an analysis flow or a bounded planning loop.
+* **Operational Modes**:
+  1. **Planner / Router Mode**: Given the incident packet and current state, decide the next bounded action and emit structured fields such as action type, search scope, query, or completion status.
+  2. **Analysis Mode**: Given sufficient collected facts, perform root-cause analysis, attribution, summarization, or report generation.
+* **Prompt Design Principle**: A soft node may ask for the **next bounded retrieval step**, but it must not be asked to act as an unconstrained tool-calling agent. The correct pattern is: "Based on the current state, choose one allowed next action and emit strict JSON," not "freely explore the system and decide what to do however you want."
+* **Structured Output**: Soft nodes must forcefully output standardized JSON (such as next action, search parameters, conclusion type, root cause details, whether data is missing, etc.) so that the engine can proceed with conditional routing.
 
 ### 2.3 Automation Boundaries: Strict Separation of Duties between WebMCP and LLMs
 When introducing **WebMCP** for UI frontend automation testing, we must strictly draw the boundary between the machine (browser) and the AI (LLM) to prevent "using a sledgehammer to crack a nut."
@@ -40,7 +49,7 @@ Traditional DAGs flow in a single direction, but real-world troubleshooting ofte
 
 **Synapse's Graph Loop Control Specifications:**
 1. **Unified `Global State` Pool**: Maintain a unified state object throughout the entire graph execution. The outputs of soft nodes (LLMs) (e.g., finding that the initial TraceID query didn't yield full logs, requiring a query based on a newly associated OrderID) will be appended/patched to the `State`.
-2. **State-based Conditional Routing (Router Edges)**: The JSON exported from the frontend must specify: "If the soft node outputs `missing_info == true`, the line points back to the preceding hard node." When the preceding hard node is triggered again, it reads the new query keywords (OrderID) from the updated `State`, effectively preventing an infinite loop using the same conditions.
+2. **State-based Conditional Routing (Router Edges)**: The JSON exported from the frontend must specify routes such as: "If the soft node outputs `next_action == search_code`, jump to the code-search hard node," or "If `missing_info == true`, loop back to another bounded evidence-collection node." When the next hard node is triggered again, it reads new search parameters from the updated `State`, effectively preventing an infinite loop using the same conditions.
 3. **Circuit Breaker**: The underlying engine must implicitly inject a `loop_count` for every graph that has a loop circuit. If a certain loop executes more than N times (e.g., 3 times), it must forcefully break out of the loop, automatically jump to a **"Human-in-the-loop"** node, and suspend the state machine waiting for SRE intervention. This prevents the LLM from entering a "hallucination deadlock" and burning through the billing limit.
 
 ## 4. Dual-Loop Memory Bank (The Shadow Memory Agent)

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/xunchenzheng/synapse/internal/store"
-	"github.com/xunchenzheng/synapse/pkg/models"
+	"github.com/Trin9/SynapseFlow/backend/internal/store"
+	"github.com/Trin9/SynapseFlow/backend/pkg/models"
 )
 
 // Retriever injects recalled historical context into the execution state.

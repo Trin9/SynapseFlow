@@ -12,18 +12,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Trin9/SynapseFlow/backend/internal/auth"
+	"github.com/Trin9/SynapseFlow/backend/internal/config"
+	"github.com/Trin9/SynapseFlow/backend/internal/engine"
+	"github.com/Trin9/SynapseFlow/backend/internal/llm"
+	"github.com/Trin9/SynapseFlow/backend/internal/mcp"
+	"github.com/Trin9/SynapseFlow/backend/internal/memory"
+	"github.com/Trin9/SynapseFlow/backend/internal/metrics"
+	"github.com/Trin9/SynapseFlow/backend/internal/notify"
+	"github.com/Trin9/SynapseFlow/backend/internal/store"
+	"github.com/Trin9/SynapseFlow/backend/pkg/logger"
+	"github.com/Trin9/SynapseFlow/backend/pkg/models"
 	"github.com/gin-gonic/gin"
-	"github.com/xunchenzheng/synapse/internal/auth"
-	"github.com/xunchenzheng/synapse/internal/config"
-	"github.com/xunchenzheng/synapse/internal/engine"
-	"github.com/xunchenzheng/synapse/internal/llm"
-	"github.com/xunchenzheng/synapse/internal/mcp"
-	"github.com/xunchenzheng/synapse/internal/memory"
-	"github.com/xunchenzheng/synapse/internal/metrics"
-	"github.com/xunchenzheng/synapse/internal/notify"
-	"github.com/xunchenzheng/synapse/internal/store"
-	"github.com/xunchenzheng/synapse/pkg/logger"
-	"github.com/xunchenzheng/synapse/pkg/models"
 )
 
 // ---------------------------------------------------------------------------
@@ -523,9 +523,11 @@ func (s *Server) startExecution(dag *models.DAGConfig, initialState *models.Glob
 		exec.Results = result.Results
 		exec.State = result.State // Persist the state for resume
 
-		if result.Err != nil {
+		if result.Err != nil || result.Status == models.StatusFailed {
 			exec.Status = models.StatusFailed
-			exec.Error = result.Err.Error()
+			if result.Err != nil {
+				exec.Error = result.Err.Error()
+			}
 			exec.EndedAt = &now
 		} else if result.Status == models.StatusSuspended {
 			exec.Status = models.StatusSuspended
@@ -795,9 +797,11 @@ func (s *Server) handleResumeExecution(c *gin.Context) {
 			}
 		}
 		exec.State = result.State
-		if result.Err != nil {
+		if result.Err != nil || result.Status == models.StatusFailed {
 			exec.Status = models.StatusFailed
-			exec.Error = result.Err.Error()
+			if result.Err != nil {
+				exec.Error = result.Err.Error()
+			}
 			exec.EndedAt = &now
 		} else if result.Status == models.StatusSuspended {
 			exec.Status = models.StatusSuspended
