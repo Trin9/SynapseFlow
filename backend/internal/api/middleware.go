@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -13,8 +14,9 @@ import (
 const identityKey = "synapse_identity"
 
 // authMiddleware validates the incoming request using either:
-//   - Authorization: Bearer <role>:<subject>  (JWT-lite token mode)
-//   - X-API-Key: <key>                        (API key mode, key looked up in configured set)
+//   - Authorization: Bearer <signed-jwt>  (JWT mode, when SYNAPSE_JWT_SECRET is set)
+//   - Authorization: Bearer <role>:<subject>  (JWT-lite plaintext, legacy / dev mode)
+//   - X-API-Key: <key>                        (API key mode)
 //
 // If authentication passes, the Identity is stored in the Gin context.
 // If AUTH_REQUIRED is false (no keys configured) the middleware is a no-op and
@@ -43,11 +45,23 @@ func (s *Server) resolveIdentity(c *gin.Context) *auth.Identity {
 		}
 	}
 
-	// Bearer token mode: Authorization: Bearer role:subject
+	// Bearer token mode
 	if bearer := strings.TrimSpace(c.GetHeader("Authorization")); bearer != "" {
 		token := strings.TrimPrefix(bearer, "Bearer ")
 		token = strings.TrimSpace(token)
 		if token != "" {
+			// If a JWT secret is configured, verify as a signed JWT first.
+			if len(s.jwtSecret) > 0 {
+				if id, err := auth.ParseJWT(s.jwtSecret, token); err == nil {
+					return id
+				}
+				// A JWT secret is configured but the token failed verification —
+				// reject it rather than falling through to the plaintext parser,
+				// to prevent unverified tokens from being accepted.
+				return nil
+			}
+			// No JWT secret: fall back to legacy plaintext "role:subject" tokens
+			// (dev/open mode only).
 			if id, err := auth.ParseToken(token); err == nil {
 				return id
 			}
@@ -100,6 +114,7 @@ func identityFromCtx(c *gin.Context) *auth.Identity {
 }
 
 // auditMiddleware records sensitive operations after the request completes.
+// Details field is enriched with client IP, HTTP method, and request path.
 func (s *Server) auditMiddleware(action, resourceType string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Next() // execute handler first
@@ -122,6 +137,10 @@ func (s *Server) auditMiddleware(action, resourceType string) gin.HandlerFunc {
 
 		resourceID := c.Param("id")
 
+		// Enrich audit detail with request context (IP, method, path).
+		details := fmt.Sprintf("ip=%s method=%s path=%s",
+			c.ClientIP(), c.Request.Method, c.Request.URL.Path)
+
 		_ = s.audits.Record(context.Background(), audit.Entry{
 			Actor:      actor,
 			Role:       role,
@@ -129,6 +148,7 @@ func (s *Server) auditMiddleware(action, resourceType string) gin.HandlerFunc {
 			Resource:   resourceType,
 			ResourceID: resourceID,
 			Result:     result,
+			Details:    details,
 		})
 	}
 }

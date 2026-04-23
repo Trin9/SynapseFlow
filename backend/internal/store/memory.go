@@ -244,3 +244,123 @@ func cloneIntMap(in map[string]int) map[string]int {
 	}
 	return out
 }
+
+// ---------------------------------------------------------------------------
+// MemoryEpisodeStore (Sprint 7 – used in tests and no-DB mode)
+// ---------------------------------------------------------------------------
+
+type MemoryEpisodeStore struct {
+	mu        sync.RWMutex
+	episodes  map[string]*models.Episode
+	artifacts map[string][]*models.EpisodeArtifact // keyed by episodeID
+}
+
+func NewMemoryEpisodeStore() *MemoryEpisodeStore {
+	return &MemoryEpisodeStore{
+		episodes:  make(map[string]*models.Episode),
+		artifacts: make(map[string][]*models.EpisodeArtifact),
+	}
+}
+
+func (s *MemoryEpisodeStore) Create(_ context.Context, ep *models.Episode) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	clone := cloneEpisode(ep)
+	s.episodes[ep.ID] = clone
+	return nil
+}
+
+func (s *MemoryEpisodeStore) Update(_ context.Context, ep *models.Episode) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.episodes[ep.ID]; !ok {
+		return ErrNotFound
+	}
+	s.episodes[ep.ID] = cloneEpisode(ep)
+	return nil
+}
+
+func (s *MemoryEpisodeStore) Get(_ context.Context, id string) (*models.Episode, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	ep, ok := s.episodes[id]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return cloneEpisode(ep), nil
+}
+
+func (s *MemoryEpisodeStore) ListByExecution(_ context.Context, execID string) ([]*models.Episode, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []*models.Episode
+	for _, ep := range s.episodes {
+		if ep.ExecID == execID {
+			out = append(out, cloneEpisode(ep))
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].CreatedAt.Before(out[j].CreatedAt)
+	})
+	return out, nil
+}
+
+func (s *MemoryEpisodeStore) SaveArtifact(_ context.Context, artifact *models.EpisodeArtifact) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	list := s.artifacts[artifact.EpisodeID]
+	for i, a := range list {
+		if a.ID == artifact.ID {
+			list[i] = cloneArtifact(artifact)
+			s.artifacts[artifact.EpisodeID] = list
+			return nil
+		}
+	}
+	s.artifacts[artifact.EpisodeID] = append(list, cloneArtifact(artifact))
+	return nil
+}
+
+func (s *MemoryEpisodeStore) ListArtifacts(_ context.Context, episodeID string) ([]*models.EpisodeArtifact, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	list := s.artifacts[episodeID]
+	out := make([]*models.EpisodeArtifact, len(list))
+	for i, a := range list {
+		out[i] = cloneArtifact(a)
+	}
+	return out, nil
+}
+
+func cloneEpisode(ep *models.Episode) *models.Episode {
+	if ep == nil {
+		return nil
+	}
+	clone := *ep
+	// deep-copy slices / maps
+	if ep.Handles != nil {
+		clone.Handles = make(map[string]string, len(ep.Handles))
+		for k, v := range ep.Handles {
+			clone.Handles[k] = v
+		}
+	}
+	clone.Evidence = append([]models.EpisodeEvidence(nil), ep.Evidence...)
+	if ep.Verdict != nil {
+		v := *ep.Verdict
+		v.CausalChain = append([]string(nil), ep.Verdict.CausalChain...)
+		v.Gaps = append([]string(nil), ep.Verdict.Gaps...)
+		clone.Verdict = &v
+	}
+	clone.AuditTrail = append([]models.EpisodeAuditEntry(nil), ep.AuditTrail...)
+	loopGuard := ep.LoopGuard
+	loopGuard.AttemptedActions = append([]string(nil), ep.LoopGuard.AttemptedActions...)
+	clone.LoopGuard = loopGuard
+	return &clone
+}
+
+func cloneArtifact(a *models.EpisodeArtifact) *models.EpisodeArtifact {
+	if a == nil {
+		return nil
+	}
+	clone := *a
+	return &clone
+}

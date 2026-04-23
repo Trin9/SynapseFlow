@@ -20,6 +20,8 @@ export function Toolbar() {
   const loadFromDAGConfig = useGraphStore((s) => s.loadFromDAGConfig)
   const clearCanvas = useGraphStore((s) => s.clearCanvas)
   const nodes = useGraphStore((s) => s.nodes)
+  const showHistory = useGraphStore((s) => s.showHistory)
+  const setShowHistory = useGraphStore((s) => s.setShowHistory)
 
   const [error, setError] = useState<string | null>(null)
   const [dags, setDags] = useState<DAGConfig[]>([])
@@ -206,6 +208,18 @@ export function Toolbar() {
                    transition-colors"
       >
         Clear
+      </button>
+
+      {/* History toggle */}
+      <button
+        onClick={() => setShowHistory(!showHistory)}
+        className={`px-3 py-1 text-sm border rounded-md transition-colors
+          ${showHistory
+            ? 'bg-gray-800 text-white border-gray-800'
+            : 'text-gray-600 border-gray-300 hover:bg-gray-50'
+          }`}
+      >
+        History
       </button>
 
       {/* Run button */}

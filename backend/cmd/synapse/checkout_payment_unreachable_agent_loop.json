@@ -6,7 +6,8 @@
     "scenario_id": "checkout_payment_unreachable",
     "scenario_phase": "phase-a",
     "service_name": "checkout",
-    "pattern": "bounded-agent-loop"
+    "pattern": "bounded-agent-loop",
+    "episode_type": "investigation_step"
   },
   "nodes": [
     {

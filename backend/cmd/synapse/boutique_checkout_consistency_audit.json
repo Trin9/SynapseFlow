@@ -1,0 +1,222 @@
+{
+  "id": "boutique-checkout-consistency-audit",
+  "name": "boutique-checkout-consistency-audit",
+  "description": "Minimal Phase 1 Online Boutique verification flow using deterministic frontend actions, service log checks, and a final LLM audit.",
+  "metadata": {
+    "scenario_id": "checkout_consistency_audit",
+    "scenario_phase": "phase-1",
+    "pattern": "deterministic-sop-audit",
+    "service_name": "frontend",
+    "episode_type": "action_verification"
+  },
+  "nodes": [
+    {
+      "id": "frontend_health",
+      "name": "Check frontend health",
+      "type": "script",
+      "action": "BASE_URL=\"${BOUTIQUE_FRONTEND_BASE_URL:-http://127.0.0.1:8080}\"; COOKIE_JAR=/tmp/synapse-boutique-checkout-cookie.txt; rm -f \"$COOKIE_JAR\"; curl -fsS -c \"$COOKIE_JAR\" \"$BASE_URL/_healthz\"",
+      "config": {
+        "timeout_seconds": 20
+      }
+    },
+    {
+      "id": "discover_product",
+      "name": "Discover product id",
+      "type": "script",
+      "action": "BASE_URL=\"${BOUTIQUE_FRONTEND_BASE_URL:-http://127.0.0.1:8080}\"; COOKIE_JAR=/tmp/synapse-boutique-checkout-cookie.txt; curl -fsS -c \"$COOKIE_JAR\" -b \"$COOKIE_JAR\" \"$BASE_URL/\" | grep -oE '/product/[A-Z0-9]+' | head -n1 | cut -d/ -f3",
+      "config": {
+        "timeout_seconds": 30
+      }
+    },
+    {
+      "id": "add_to_cart",
+      "name": "Add product to cart",
+      "type": "script",
+      "action": "BASE_URL=\"${BOUTIQUE_FRONTEND_BASE_URL:-http://127.0.0.1:8080}\"; COOKIE_JAR=/tmp/synapse-boutique-checkout-cookie.txt; curl -sS -c \"$COOKIE_JAR\" -b \"$COOKIE_JAR\" -X POST \"$BASE_URL/cart\" --data-urlencode \"product_id={{discover_product}}\" --data-urlencode 'quantity=1' -D - -o /dev/null",
+      "config": {
+        "timeout_seconds": 30
+      }
+    },
+    {
+      "id": "capture_session_id",
+      "name": "Capture session id",
+      "type": "script",
+      "action": "awk '$6 == \"shop_session-id\" {print $7}' /tmp/synapse-boutique-checkout-cookie.txt | tail -n1",
+      "config": {
+        "timeout_seconds": 10
+      }
+    },
+    {
+      "id": "verify_cart_after_add",
+      "name": "Verify cart after add",
+      "type": "script",
+      "action": "BASE_URL=\"${BOUTIQUE_FRONTEND_BASE_URL:-http://127.0.0.1:8080}\"; COOKIE_JAR=/tmp/synapse-boutique-checkout-cookie.txt; if curl -fsS -c \"$COOKIE_JAR\" -b \"$COOKIE_JAR\" \"$BASE_URL/cart\" | grep -q 'SKU #{{discover_product}}'; then echo 'cart_contains_product'; else echo 'cart_missing_product'; fi",
+      "config": {
+        "timeout_seconds": 30
+      }
+    },
+    {
+      "id": "place_order",
+      "name": "Place order",
+      "type": "script",
+      "action": "BASE_URL=\"${BOUTIQUE_FRONTEND_BASE_URL:-http://127.0.0.1:8080}\"; COOKIE_JAR=/tmp/synapse-boutique-checkout-cookie.txt; curl -sS -c \"$COOKIE_JAR\" -b \"$COOKIE_JAR\" -X POST \"$BASE_URL/cart/checkout\" --data-urlencode 'email=synapse@example.com' --data-urlencode 'street_address=1600 Amphitheatre Pkwy' --data-urlencode 'zip_code=94043' --data-urlencode 'city=Mountain View' --data-urlencode 'state=CA' --data-urlencode 'country=United States' --data-urlencode 'credit_card_number=4432801561520454' --data-urlencode 'credit_card_expiration_month=12' --data-urlencode 'credit_card_expiration_year=2030' --data-urlencode 'credit_card_cvv=672' -w '\nHTTP_STATUS=%{http_code}\n'",
+      "config": {
+        "timeout_seconds": 60
+      }
+    },
+    {
+      "id": "verify_cart_after_checkout",
+      "name": "Verify cart after checkout",
+      "type": "script",
+      "action": "BASE_URL=\"${BOUTIQUE_FRONTEND_BASE_URL:-http://127.0.0.1:8080}\"; COOKIE_JAR=/tmp/synapse-boutique-checkout-cookie.txt; if curl -fsS -c \"$COOKIE_JAR\" -b \"$COOKIE_JAR\" \"$BASE_URL/cart\" | grep -q 'Your shopping cart is empty!'; then echo 'cart_cleared'; else echo 'cart_not_empty'; fi",
+      "config": {
+        "timeout_seconds": 30
+      }
+    },
+    {
+      "id": "checkout_logs",
+      "name": "Fetch checkoutservice logs",
+      "type": "script",
+      "action": "NS=\"${BOUTIQUE_KUBECTL_NAMESPACE:-default}\"; CTX=\"${BOUTIQUE_KUBECTL_CONTEXT:-}\"; if [[ -n \"$CTX\" ]]; then kubectl --context \"$CTX\" logs -n \"$NS\" deployment/checkoutservice --tail=120 || true; else kubectl logs -n \"$NS\" deployment/checkoutservice --tail=120 || true; fi",
+      "config": {
+        "timeout_seconds": 40
+      }
+    },
+    {
+      "id": "payment_logs",
+      "name": "Fetch paymentservice logs",
+      "type": "script",
+      "action": "NS=\"${BOUTIQUE_KUBECTL_NAMESPACE:-default}\"; CTX=\"${BOUTIQUE_KUBECTL_CONTEXT:-}\"; if [[ -n \"$CTX\" ]]; then kubectl --context \"$CTX\" logs -n \"$NS\" deployment/paymentservice --tail=120 || true; else kubectl logs -n \"$NS\" deployment/paymentservice --tail=120 || true; fi",
+      "config": {
+        "timeout_seconds": 40
+      }
+    },
+    {
+      "id": "shipping_logs",
+      "name": "Fetch shippingservice logs",
+      "type": "script",
+      "action": "NS=\"${BOUTIQUE_KUBECTL_NAMESPACE:-default}\"; CTX=\"${BOUTIQUE_KUBECTL_CONTEXT:-}\"; if [[ -n \"$CTX\" ]]; then kubectl --context \"$CTX\" logs -n \"$NS\" deployment/shippingservice --tail=120 || true; else kubectl logs -n \"$NS\" deployment/shippingservice --tail=120 || true; fi",
+      "config": {
+        "timeout_seconds": 40
+      }
+    },
+    {
+      "id": "audit_order_consistency",
+      "name": "Audit checkout consistency",
+      "type": "llm",
+      "action": "You are auditing a deterministic Online Boutique checkout run. Use only the collected facts below. Decide whether the business flow actually closed. Treat missing log evidence as meaningful. A successful run should normally have cart_contains_product after add, cart_cleared after checkout, an order completion page, successful payment evidence, and successful shipping evidence. If cart after checkout is cart_not_empty, treat that as inconsistency unless the rest of the evidence clearly proves the cart page check is wrong.\n\nFrontend health:\n{{frontend_health}}\n\nProduct id:\n{{discover_product}}\n\nSession id:\n{{capture_session_id}}\n\nAdd-to-cart result:\n{{add_to_cart}}\n\nCart after add:\n{{verify_cart_after_add}}\n\nCheckout response:\n{{place_order}}\n\nCart after checkout:\n{{verify_cart_after_checkout}}\n\nCheckout logs:\n{{checkout_logs}}\n\nPayment logs:\n{{payment_logs}}\n\nShipping logs:\n{{shipping_logs}}\n\nReturn strict JSON with keys: business_success, confidence, missing_info, next_action, summary, evidence.",
+      "config": {
+        "json_mode": true,
+        "temperature": 0,
+        "state_key": "audit",
+        "parse_json_output": true,
+        "json_defaults": {
+          "business_success": false,
+          "confidence": "low",
+          "missing_info": [],
+          "next_action": "human_review",
+          "summary": "",
+          "evidence": []
+        },
+        "required_json_keys": [
+          "business_success",
+          "next_action",
+          "summary"
+        ],
+        "timeout_seconds": 90,
+        "episode_verdict": true,
+        "system_prompt": "You are a bounded Synapse SOP audit node. You do not execute actions. You only decide whether the checkout flow reached business closure based on the provided action results and service logs. Allowed next_action values are finish and human_review. Choose finish only when checkout evidence is internally consistent. Treat cart_contains_product after add as expected. Treat cart_cleared after checkout as expected. If the cart is not empty after checkout, or if logs and page state disagree, choose human_review unless there is explicit evidence that the cart check itself is invalid."
+      }
+    },
+    {
+      "id": "route_audit",
+      "name": "Route audit decision",
+      "type": "router",
+      "action": "{{audit.next_action}}"
+    },
+    {
+      "id": "final_report",
+      "name": "Emit final report",
+      "type": "script",
+      "action": "printf '%s\n' '{{audit.summary}}'",
+      "config": {
+        "timeout_seconds": 15
+      }
+    },
+    {
+      "id": "human_review",
+      "name": "Request human review",
+      "type": "human",
+      "action": "Review Boutique checkout audit inconsistency. Summary: {{audit.summary}}"
+    }
+  ],
+  "edges": [
+    {
+      "from": "frontend_health",
+      "to": "discover_product"
+    },
+    {
+      "from": "discover_product",
+      "to": "add_to_cart"
+    },
+    {
+      "from": "add_to_cart",
+      "to": "capture_session_id"
+    },
+    {
+      "from": "capture_session_id",
+      "to": "verify_cart_after_add"
+    },
+    {
+      "from": "verify_cart_after_add",
+      "to": "place_order"
+    },
+    {
+      "from": "place_order",
+      "to": "verify_cart_after_checkout"
+    },
+    {
+      "from": "place_order",
+      "to": "checkout_logs"
+    },
+    {
+      "from": "place_order",
+      "to": "payment_logs"
+    },
+    {
+      "from": "place_order",
+      "to": "shipping_logs"
+    },
+    {
+      "from": "verify_cart_after_checkout",
+      "to": "audit_order_consistency"
+    },
+    {
+      "from": "checkout_logs",
+      "to": "audit_order_consistency"
+    },
+    {
+      "from": "payment_logs",
+      "to": "audit_order_consistency"
+    },
+    {
+      "from": "shipping_logs",
+      "to": "audit_order_consistency"
+    },
+    {
+      "from": "audit_order_consistency",
+      "to": "route_audit",
+      "condition": "{{audit_order_consistency}}"
+    },
+    {
+      "from": "route_audit",
+      "to": "final_report",
+      "condition": "{{audit.next_action}} == finish"
+    },
+    {
+      "from": "route_audit",
+      "to": "human_review",
+      "condition": "{{audit.next_action}} == human_review"
+    }
+  ]
+}

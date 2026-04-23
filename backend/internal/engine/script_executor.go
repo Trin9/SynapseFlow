@@ -12,7 +12,13 @@ import (
 
 // ScriptExecutor executes bash script commands (Hard Node).
 // It is 100% deterministic — no LLM calls, zero token consumption.
-type ScriptExecutor struct{}
+//
+// If Writer is non-nil and an episode_id is available (from node config or
+// GlobalState key "__episode_id__"), each successful execution appends a
+// fact-evidence entry to the Episode via EpisodeWriter.AppendFact.
+type ScriptExecutor struct {
+	Writer *EpisodeWriter // optional; nil = no Episode tracking
+}
 
 func (e *ScriptExecutor) Execute(ctx context.Context, node models.Node, state *models.GlobalState) models.NodeResult {
 	start := time.Now()
@@ -63,6 +69,17 @@ func (e *ScriptExecutor) Execute(ctx context.Context, node models.Node, state *m
 
 	// Write output to GlobalState so downstream nodes can reference it via {{node_id}}
 	state.Set(node.ID, output)
+
+	// Episode tracking: Hard Node appends fact evidence.
+	if e.Writer != nil {
+		episodeID := configString(node.Config, "episode_id")
+		if episodeID == "" {
+			episodeID = state.GetString("__episode_id__")
+		}
+		if episodeID != "" {
+			_ = e.Writer.AppendFact(ctx, episodeID, node.ID, node.Type, node.Name, output)
+		}
+	}
 
 	return result
 }

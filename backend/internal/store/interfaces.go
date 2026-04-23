@@ -37,6 +37,23 @@ type ExperienceStore interface {
 	Search(context.Context, SearchQuery) ([]models.Experience, error)
 }
 
+// EpisodeStore persists Episode product objects (Sprint 7).
+type EpisodeStore interface {
+	// Create inserts a new Episode record.
+	Create(ctx context.Context, ep *models.Episode) error
+	// Update replaces the mutable fields of an existing Episode.
+	Update(ctx context.Context, ep *models.Episode) error
+	// Get returns a single Episode by ID including all evidence and verdict.
+	Get(ctx context.Context, id string) (*models.Episode, error)
+	// ListByExecution returns all Episodes for a given execution, ordered by
+	// created_at ascending.
+	ListByExecution(ctx context.Context, execID string) ([]*models.Episode, error)
+	// SaveArtifact upserts a large-payload artifact linked to an Episode.
+	SaveArtifact(ctx context.Context, artifact *models.EpisodeArtifact) error
+	// ListArtifacts returns all artifacts for an Episode.
+	ListArtifacts(ctx context.Context, episodeID string) ([]*models.EpisodeArtifact, error)
+}
+
 type SearchQuery struct {
 	Text        string
 	AlertType   string

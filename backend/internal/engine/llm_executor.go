@@ -28,8 +28,13 @@ const defaultSRESystemPrompt = "You are a senior SRE root-cause analysis engine.
 // LLMExecutor calls an LLM API for reasoning tasks via the llm.LLMClient interface.
 // Per AGENTS.md: LLM is a Node, not a Scheduler. It receives collected facts
 // from GlobalState and outputs structured JSON conclusions.
+//
+// If Writer is non-nil and an episode_id is available, the executor writes:
+//   - A verdict (WriteVerdict) when node.Config["episode_verdict"] == true
+//   - A fact-evidence entry (AppendFact) otherwise
 type LLMExecutor struct {
 	Client llm.LLMClient
+	Writer *EpisodeWriter // optional; nil = no Episode tracking
 }
 
 func (e *LLMExecutor) Execute(ctx context.Context, node models.Node, state *models.GlobalState) models.NodeResult {
@@ -106,6 +111,24 @@ func (e *LLMExecutor) Execute(ctx context.Context, node models.Node, state *mode
 	result.Duration = time.Since(start)
 
 	state.Set(node.ID, resp.Content)
+
+	// Episode tracking: Soft Node writes verdict or appends fact evidence.
+	if e.Writer != nil {
+		episodeID := configString(node.Config, "episode_id")
+		if episodeID == "" {
+			episodeID = state.GetString("__episode_id__")
+		}
+		if episodeID != "" {
+			isVerdict, _ := node.Config["episode_verdict"].(bool)
+			if isVerdict {
+				verdict := buildVerdictFromLLMOutput(resp.Content)
+				_ = e.Writer.WriteVerdict(ctx, episodeID, node.ID, verdict)
+			} else {
+				_ = e.Writer.AppendFact(ctx, episodeID, node.ID, node.Type, node.Name, resp.Content)
+			}
+		}
+	}
+
 	if err := writeStructuredLLMState(node, state, resp.Content); err != nil {
 		result.Status = "error"
 		result.Error = err.Error()
@@ -120,7 +143,9 @@ func (e *LLMExecutor) Execute(ctx context.Context, node models.Node, state *mode
 // ---------------------------------------------------------------------------
 
 // MockLLMExecutor simulates an LLM response for testing/development.
-type MockLLMExecutor struct{}
+type MockLLMExecutor struct {
+	Writer *EpisodeWriter // optional; nil = no Episode tracking
+}
 
 func (e *MockLLMExecutor) Execute(ctx context.Context, node models.Node, state *models.GlobalState) models.NodeResult {
 	start := time.Now()
@@ -158,6 +183,24 @@ func (e *MockLLMExecutor) Execute(ctx context.Context, node models.Node, state *
 	}
 
 	state.Set(node.ID, mockResponse)
+
+	// Episode tracking (mock path — same rules as real LLMExecutor).
+	if e.Writer != nil {
+		episodeID := configString(node.Config, "episode_id")
+		if episodeID == "" {
+			episodeID = state.GetString("__episode_id__")
+		}
+		if episodeID != "" {
+			isVerdict, _ := node.Config["episode_verdict"].(bool)
+			if isVerdict {
+				verdict := buildVerdictFromLLMOutput(mockResponse)
+				_ = e.Writer.WriteVerdict(ctx, episodeID, node.ID, verdict)
+			} else {
+				_ = e.Writer.AppendFact(ctx, episodeID, node.ID, node.Type, node.Name, mockResponse)
+			}
+		}
+	}
+
 	if err := writeStructuredLLMState(node, state, mockResponse); err != nil {
 		result.Status = "error"
 		result.Error = err.Error()
@@ -247,4 +290,53 @@ func validateStructuredKeys(config map[string]interface{}, parsed map[string]int
 	}
 
 	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Episode helpers
+// ---------------------------------------------------------------------------
+
+// buildVerdictFromLLMOutput parses a JSON LLM response and extracts the fields
+// required to populate an EpisodeVerdict.  Best-effort: unknown shapes fall
+// back to a plain-text conclusion.
+func buildVerdictFromLLMOutput(content string) models.EpisodeVerdict {
+	var parsed map[string]interface{}
+	if err := json.Unmarshal([]byte(content), &parsed); err != nil {
+		return models.EpisodeVerdict{Conclusion: content}
+	}
+
+	verdict := models.EpisodeVerdict{}
+
+	// Conclusion: prefer summary → root_cause → conclusion → explanation
+	for _, key := range []string{"summary", "root_cause", "conclusion", "explanation"} {
+		if v, ok := parsed[key].(string); ok && strings.TrimSpace(v) != "" {
+			verdict.Conclusion = v
+			break
+		}
+	}
+
+	// Confidence: normalise to 0-1 range (LLMs often emit 0-100)
+	if v, ok := parsed["confidence"].(float64); ok {
+		if v > 1.0 {
+			verdict.Confidence = v / 100.0
+		} else {
+			verdict.Confidence = v
+		}
+	}
+
+	// CausalChain: root_cause as first entry when it differs from conclusion
+	if rc, ok := parsed["root_cause"].(string); ok && rc != "" && rc != verdict.Conclusion {
+		verdict.CausalChain = []string{rc}
+	}
+
+	// Gaps from missing_info array
+	if mi, ok := parsed["missing_info"].([]interface{}); ok {
+		for _, item := range mi {
+			if s, ok := item.(string); ok && s != "" {
+				verdict.Gaps = append(verdict.Gaps, s)
+			}
+		}
+	}
+
+	return verdict
 }

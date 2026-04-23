@@ -24,6 +24,7 @@ import (
 	"github.com/Trin9/SynapseFlow/backend/pkg/logger"
 	"github.com/Trin9/SynapseFlow/backend/pkg/models"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 // ---------------------------------------------------------------------------
@@ -50,9 +51,17 @@ type Server struct {
 	// Format: comma-separated "key:role:subject" triples.
 	// If empty, server runs in open/dev mode (any request gets admin identity).
 	apiKeys map[string]*auth.Identity
-	dags    store.DAGStore
-	execs   store.ExecutionStore
-	audits  store.AuditStore
+
+	// jwtSecret is the HMAC-SHA256 signing key for JWT tokens (Sprint 9).
+	// Set via SYNAPSE_JWT_SECRET env var. When non-empty, Bearer tokens are
+	// verified as signed JWTs; when empty, the legacy "role:subject" plaintext
+	// mode is used (dev/open environments only).
+	jwtSecret []byte
+
+	dags     store.DAGStore
+	execs    store.ExecutionStore
+	audits   store.AuditStore
+	episodes store.EpisodeStore
 }
 
 // apiError is the unified error response format.
@@ -80,6 +89,7 @@ func NewServer(opts ...ServerOption) *Server {
 		config:           cfg,
 		metricsCollector: metrics.NewCollector(),
 		apiKeys:          parseAPIKeys(os.Getenv("SYNAPSE_API_KEYS")),
+		jwtSecret:        []byte(os.Getenv("SYNAPSE_JWT_SECRET")),
 	}
 
 	if cfg.EnableDBStorage {
@@ -96,6 +106,7 @@ func NewServer(opts ...ServerOption) *Server {
 				s.dags = stores.DAGs
 				s.execs = stores.Executions
 				s.audits = stores.Audits
+				s.episodes = stores.Episodes
 				s.memory = stores.MemoryStore()
 			}
 		}
@@ -109,6 +120,9 @@ func NewServer(opts ...ServerOption) *Server {
 	}
 	if s.audits == nil {
 		s.audits = store.NewMemoryAuditStore()
+	}
+	if s.episodes == nil {
+		s.episodes = store.NewMemoryEpisodeStore()
 	}
 	if s.memory == nil {
 		s.memory = memory.NewInMemoryStore()
@@ -130,11 +144,15 @@ func NewServer(opts ...ServerOption) *Server {
 	}
 
 	// Configure executors based on environment
+	episodeWriter := engine.NewEpisodeWriter(s.episodes)
 	executors := map[models.NodeType]engine.NodeExecutor{
-		models.NodeTypeScript: &engine.ScriptExecutor{},
+		models.NodeTypeScript: &engine.ScriptExecutor{Writer: episodeWriter},
 		models.NodeTypeHuman:  &engine.HumanExecutor{},
 		models.NodeTypeRouter: &engine.RouterExecutor{},
 		models.NodeTypeMCP:    &engine.MCPExecutor{MCP: s.mcpMgr},
+		models.NodeTypeWebInteraction: &engine.WebNodeExecutor{
+			Writer: episodeWriter,
+		},
 	}
 
 	// Use real LLM executor if API key is set, otherwise mock
@@ -216,9 +234,9 @@ func NewServer(opts ...ServerOption) *Server {
 		}
 		client = llm.NewJSONEnforcingClient(client)
 
-		executors[models.NodeTypeLLM] = &engine.LLMExecutor{Client: client}
+		executors[models.NodeTypeLLM] = &engine.LLMExecutor{Client: client, Writer: episodeWriter}
 	} else {
-		executors[models.NodeTypeLLM] = &engine.MockLLMExecutor{}
+		executors[models.NodeTypeLLM] = &engine.MockLLMExecutor{Writer: episodeWriter}
 		log.Infow("Using mock LLM executor (set LLM_API_KEY for real LLM)")
 	}
 
@@ -250,7 +268,11 @@ func (s *Server) setupRouter() {
 
 	// Health check and metrics are always public
 	r.GET("/health", s.handleHealth)
+	r.GET("/health/live", s.handleLive)
 	r.GET("/metrics", s.handleMetrics)
+
+	// Token issuance (public – authentication happens inside the handler)
+	r.POST("/api/v1/auth/token", s.handleIssueToken)
 
 	// Webhook endpoint: authenticated via API key (machine-to-machine)
 	r.POST("/api/v1/webhook/alert", s.authMiddleware(), s.handleWebhookAlert)
@@ -278,6 +300,10 @@ func (s *Server) setupRouter() {
 
 		// Memory
 		v1.GET("/experiences", s.handleListExperiences)
+
+		// Episodes (Sprint 7)
+		v1.GET("/executions/:id/episodes", s.handleListEpisodes)
+		v1.GET("/episodes/:id", s.handleGetEpisode)
 
 		// Audit log (admin only)
 		v1.GET("/audit", requireRole(auth.RoleAdmin), s.handleListAudit)
@@ -358,6 +384,49 @@ func (s *Server) handleHealth(c *gin.Context) {
 			"mcp": mcpStatus,
 			"db":  dbStatus,
 		},
+	})
+}
+
+// handleLive is the Kubernetes liveness probe endpoint.
+// It always returns 200 as long as the process is running.
+func (s *Server) handleLive(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+// handleIssueToken exchanges a valid API key for a signed JWT.
+// POST /api/v1/auth/token
+// Body: {"api_key": "<key>"}
+// Response: {"token": "<jwt>", "expires_in": 3600, "role": "...", "subject": "..."}
+// Returns 501 when SYNAPSE_JWT_SECRET is not configured.
+func (s *Server) handleIssueToken(c *gin.Context) {
+	if len(s.jwtSecret) == 0 {
+		writeError(c, http.StatusNotImplemented, "jwt_not_configured",
+			"JWT signing is not configured (set SYNAPSE_JWT_SECRET)", nil)
+		return
+	}
+	var req struct {
+		APIKey string `json:"api_key" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request body", err.Error())
+		return
+	}
+	id, ok := s.lookupAPIKey(req.APIKey)
+	if !ok {
+		writeError(c, http.StatusUnauthorized, "invalid_key", "invalid API key", nil)
+		return
+	}
+	const ttl = time.Hour
+	token, err := auth.IssueJWT(s.jwtSecret, id, ttl)
+	if err != nil {
+		writeError(c, http.StatusInternalServerError, "jwt_error", "failed to issue token", err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"token":      token,
+		"expires_in": int(ttl.Seconds()),
+		"role":       string(id.Role),
+		"subject":    id.Subject,
 	})
 }
 
@@ -503,6 +572,30 @@ func (s *Server) startExecution(dag *models.DAGConfig, initialState *models.Glob
 	}
 	if err := s.execs.Create(context.Background(), exec); err != nil {
 		logger.L().Errorw("failed to create execution", "execution_id", execID, "error", err)
+	}
+
+	// Auto-create Episode when the DAG metadata declares an episode_type.
+	// The resulting episode_id is injected into GlobalState as "__episode_id__"
+	// so every ScriptExecutor and LLMExecutor can pick it up automatically.
+	if epType, ok := dag.Metadata["episode_type"]; ok && epType != "" {
+		ep := &models.Episode{
+			ID:            generateID(),
+			ExecID:        execID,
+			EpisodeType:   models.EpisodeType(epType),
+			LoopGuard:     models.EpisodeLoopGuard{MaxIterations: 10},
+			SchemaVersion: 1,
+			CreatedAt:     time.Now().UTC(),
+			UpdatedAt:     time.Now().UTC(),
+		}
+		if initialState == nil {
+			initialState = models.NewGlobalState()
+		}
+		if err := s.episodes.Create(context.Background(), ep); err != nil {
+			logger.L().Warnw("failed to auto-create episode", "exec_id", execID, "error", err)
+		} else {
+			initialState.Set("__episode_id__", ep.ID)
+			logger.L().Infow("auto-created episode", "exec_id", execID, "episode_id", ep.ID, "type", epType)
+		}
 	}
 
 	// Execute asynchronously. Frontend polls /executions/:id/nodes.
@@ -662,7 +755,7 @@ func (s *Server) handleListExperiences(c *gin.Context) {
 // ---------------------------------------------------------------------------
 
 func generateID() string {
-	return fmt.Sprintf("%d", time.Now().UnixNano())
+	return uuid.New().String()
 }
 
 func writeError(c *gin.Context, status int, code string, message string, details interface{}) {
@@ -981,4 +1074,41 @@ func executionDetailsURL(dag *models.DAGConfig, exec *models.Execution) string {
 		return ""
 	}
 	return baseURL + "/executions/" + exec.ID
+}
+
+// ---------------------------------------------------------------------------
+// Episode handlers (Sprint 7)
+// ---------------------------------------------------------------------------
+
+// handleListEpisodes returns all episodes for a given execution.
+//
+//	GET /api/v1/executions/:id/episodes
+func (s *Server) handleListEpisodes(c *gin.Context) {
+	execID := c.Param("id")
+	episodes, err := s.episodes.ListByExecution(c.Request.Context(), execID)
+	if err != nil {
+		writeError(c, http.StatusInternalServerError, "episode_list_error", "failed to list episodes", err.Error())
+		return
+	}
+	if episodes == nil {
+		episodes = []*models.Episode{}
+	}
+	c.JSON(http.StatusOK, gin.H{"episodes": episodes})
+}
+
+// handleGetEpisode returns a single episode by ID.
+//
+//	GET /api/v1/episodes/:id
+func (s *Server) handleGetEpisode(c *gin.Context) {
+	id := c.Param("id")
+	ep, err := s.episodes.Get(c.Request.Context(), id)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeError(c, http.StatusNotFound, "episode_not_found", "episode not found", id)
+			return
+		}
+		writeError(c, http.StatusInternalServerError, "episode_get_error", "failed to get episode", err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, ep)
 }

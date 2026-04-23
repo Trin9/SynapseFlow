@@ -22,6 +22,7 @@ type PostgresStores struct {
 	Executions *PostgresExecutionStore
 	Audits     *PostgresAuditStore
 	memories   *PostgresExperienceStore
+	Episodes   *PostgresEpisodeStore
 }
 
 func OpenPostgres(ctx context.Context, dsn string, maxOpen, maxIdle int, maxIdleTime, maxLifetime time.Duration) (*sql.DB, error) {
@@ -47,6 +48,7 @@ func NewPostgresStores(db *sql.DB) *PostgresStores {
 		Executions: &PostgresExecutionStore{db: db},
 		Audits:     &PostgresAuditStore{db: db},
 		memories:   &PostgresExperienceStore{db: db},
+		Episodes:   &PostgresEpisodeStore{db: db},
 	}
 }
 
@@ -570,4 +572,154 @@ func overlapScore(a, b map[string]struct{}) float64 {
 		denominator = len(b)
 	}
 	return float64(matched) / float64(denominator)
+}
+
+// ---------------------------------------------------------------------------
+// PostgresEpisodeStore (Sprint 7)
+// ---------------------------------------------------------------------------
+
+type PostgresEpisodeStore struct{ db *sql.DB }
+
+func (s *PostgresEpisodeStore) Create(ctx context.Context, ep *models.Episode) error {
+	handlesJSON, _ := json.Marshal(ep.Handles)
+	evidenceJSON, _ := json.Marshal(ep.Evidence)
+	verdictJSON, _ := json.Marshal(ep.Verdict)
+	loopGuardJSON, _ := json.Marshal(ep.LoopGuard)
+	auditTrailJSON, _ := json.Marshal(ep.AuditTrail)
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO episodes (id, exec_id, episode_type, handles, evidence, verdict, loop_guard, audit_trail, schema_version, created_at, updated_at)
+		VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10, $11)
+	`, ep.ID, ep.ExecID, string(ep.EpisodeType),
+		handlesJSON, evidenceJSON, verdictJSON, loopGuardJSON, auditTrailJSON,
+		ep.SchemaVersion, ep.CreatedAt.UTC(), ep.UpdatedAt.UTC())
+	return err
+}
+
+func (s *PostgresEpisodeStore) Update(ctx context.Context, ep *models.Episode) error {
+	evidenceJSON, _ := json.Marshal(ep.Evidence)
+	verdictJSON, _ := json.Marshal(ep.Verdict)
+	loopGuardJSON, _ := json.Marshal(ep.LoopGuard)
+	auditTrailJSON, _ := json.Marshal(ep.AuditTrail)
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE episodes
+		SET evidence = $2::jsonb, verdict = $3::jsonb, loop_guard = $4::jsonb,
+		    audit_trail = $5::jsonb, updated_at = $6
+		WHERE id = $1
+	`, ep.ID, evidenceJSON, verdictJSON, loopGuardJSON, auditTrailJSON, ep.UpdatedAt.UTC())
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *PostgresEpisodeStore) Get(ctx context.Context, id string) (*models.Episode, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, exec_id, episode_type, handles, evidence, verdict, loop_guard, audit_trail, schema_version, created_at, updated_at
+		FROM episodes WHERE id = $1
+	`, id)
+	return scanEpisode(row)
+}
+
+func (s *PostgresEpisodeStore) ListByExecution(ctx context.Context, execID string) ([]*models.Episode, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, exec_id, episode_type, handles, evidence, verdict, loop_guard, audit_trail, schema_version, created_at, updated_at
+		FROM episodes WHERE exec_id = $1 ORDER BY created_at ASC
+	`, execID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*models.Episode
+	for rows.Next() {
+		ep, err := scanEpisode(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, ep)
+	}
+	return out, rows.Err()
+}
+
+func (s *PostgresEpisodeStore) SaveArtifact(ctx context.Context, artifact *models.EpisodeArtifact) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO episode_artifacts (id, episode_id, evidence_id, content_type, size_bytes, storage_uri, content, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		ON CONFLICT (id) DO UPDATE
+		SET content_type = EXCLUDED.content_type, size_bytes = EXCLUDED.size_bytes,
+		    storage_uri = EXCLUDED.storage_uri, content = EXCLUDED.content
+	`, artifact.ID, artifact.EpisodeID, artifact.EvidenceID, artifact.ContentType,
+		artifact.SizeBytes, artifact.StorageURI, nullableString(artifact.Content), artifact.CreatedAt.UTC())
+	return err
+}
+
+func (s *PostgresEpisodeStore) ListArtifacts(ctx context.Context, episodeID string) ([]*models.EpisodeArtifact, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, episode_id, evidence_id, content_type, size_bytes, storage_uri, content, created_at
+		FROM episode_artifacts WHERE episode_id = $1 ORDER BY created_at ASC
+	`, episodeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*models.EpisodeArtifact
+	for rows.Next() {
+		var a models.EpisodeArtifact
+		var content sql.NullString
+		if err := rows.Scan(&a.ID, &a.EpisodeID, &a.EvidenceID, &a.ContentType, &a.SizeBytes, &a.StorageURI, &content, &a.CreatedAt); err != nil {
+			return nil, err
+		}
+		if content.Valid {
+			a.Content = content.String
+		}
+		out = append(out, &a)
+	}
+	return out, rows.Err()
+}
+
+func scanEpisode(row scanner) (*models.Episode, error) {
+	var ep models.Episode
+	var handlesJSON, evidenceJSON, verdictJSON, loopGuardJSON, auditTrailJSON []byte
+	var epType string
+	if err := row.Scan(
+		&ep.ID, &ep.ExecID, &epType,
+		&handlesJSON, &evidenceJSON, &verdictJSON, &loopGuardJSON, &auditTrailJSON,
+		&ep.SchemaVersion, &ep.CreatedAt, &ep.UpdatedAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	ep.EpisodeType = models.EpisodeType(epType)
+	if len(handlesJSON) > 0 {
+		_ = json.Unmarshal(handlesJSON, &ep.Handles)
+	}
+	if len(evidenceJSON) > 0 {
+		_ = json.Unmarshal(evidenceJSON, &ep.Evidence)
+	}
+	if len(verdictJSON) > 0 && string(verdictJSON) != "{}" && string(verdictJSON) != "null" {
+		ep.Verdict = &models.EpisodeVerdict{}
+		_ = json.Unmarshal(verdictJSON, ep.Verdict)
+	}
+	if len(loopGuardJSON) > 0 {
+		_ = json.Unmarshal(loopGuardJSON, &ep.LoopGuard)
+	}
+	if len(auditTrailJSON) > 0 {
+		_ = json.Unmarshal(auditTrailJSON, &ep.AuditTrail)
+	}
+	return &ep, nil
+}
+
+func nullableString(s string) interface{} {
+	if s == "" {
+		return nil
+	}
+	return s
 }

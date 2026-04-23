@@ -15,11 +15,12 @@ import (
 type NodeType string
 
 const (
-	NodeTypeScript NodeType = "script"
-	NodeTypeLLM    NodeType = "llm"
-	NodeTypeMCP    NodeType = "mcp"
-	NodeTypeHuman  NodeType = "human"
-	NodeTypeRouter NodeType = "router"
+	NodeTypeScript         NodeType = "script"
+	NodeTypeLLM            NodeType = "llm"
+	NodeTypeMCP            NodeType = "mcp"
+	NodeTypeHuman          NodeType = "human"
+	NodeTypeRouter         NodeType = "router"
+	NodeTypeWebInteraction NodeType = "web_interaction"
 )
 
 // ---------------------------------------------------------------------------
@@ -294,4 +295,95 @@ func formatStateValue(v interface{}) string {
 		return string(data)
 	}
 	return fmt.Sprintf("%v", v)
+}
+
+// ---------------------------------------------------------------------------
+// Episode: product-level execution record (Sprint 7)
+// ---------------------------------------------------------------------------
+
+// EpisodeType distinguishes the two primary verification patterns.
+type EpisodeType string
+
+const (
+	EpisodeTypeActionVerification EpisodeType = "action_verification"
+	EpisodeTypeInvestigationStep  EpisodeType = "investigation_step"
+)
+
+// EpisodeEvidenceType classifies who wrote an evidence entry.
+type EpisodeEvidenceType string
+
+const (
+	EvidenceTypeFact            EpisodeEvidenceType = "fact"             // written by Hard Node
+	EvidenceTypeInference       EpisodeEvidenceType = "inference"        // written by Soft Node
+	EvidenceTypeHumanCorrection EpisodeEvidenceType = "human_correction" // written by Human Node
+)
+
+// EpisodeEvidence is one piece of collected evidence inside an Episode.
+// Large payloads MUST be stored as artifacts (see EpisodeArtifact) and
+// referenced here via ContentRef instead of being inlined.
+type EpisodeEvidence struct {
+	ID          string              `json:"id"`
+	Type        EpisodeEvidenceType `json:"type"`
+	NodeID      string              `json:"node_id"`
+	NodeType    NodeType            `json:"node_type"`
+	Label       string              `json:"label,omitempty"`
+	Content     string              `json:"content,omitempty"`     // small payloads only
+	ContentRef  string              `json:"content_ref,omitempty"` // "artifact://{exec_id}/{ev_id}"
+	CollectedAt time.Time           `json:"collected_at"`
+}
+
+// EpisodeVerdict is the conclusion produced by a Soft Node after analysing
+// the collected evidence.  It is the only field a Soft Node may write.
+type EpisodeVerdict struct {
+	Conclusion  string    `json:"conclusion,omitempty"`
+	Confidence  float64   `json:"confidence"` // 0.0–1.0
+	CausalChain []string  `json:"causal_chain,omitempty"`
+	Gaps        []string  `json:"gaps,omitempty"`
+	DecidedBy   string    `json:"decided_by,omitempty"` // node ID
+	DecidedAt   time.Time `json:"decided_at,omitempty"`
+}
+
+// EpisodeLoopGuard prevents infinite re-investigation loops.
+type EpisodeLoopGuard struct {
+	MaxIterations    int      `json:"max_iterations"`
+	CurrentIteration int      `json:"current_iteration"`
+	AttemptedActions []string `json:"attempted_actions,omitempty"`
+}
+
+// EpisodeAuditEntry records a Human Node state correction with full trail.
+type EpisodeAuditEntry struct {
+	Actor         string      `json:"actor"`
+	NodeID        string      `json:"node_id"`
+	FieldModified string      `json:"field_modified"`
+	OldValue      interface{} `json:"old_value,omitempty"`
+	NewValue      interface{} `json:"new_value,omitempty"`
+	ModifiedAt    time.Time   `json:"modified_at"`
+}
+
+// Episode is the top-level product object that captures one unit of
+// purposeful execution (one action verification or one investigation step).
+type Episode struct {
+	ID            string              `json:"id"`
+	ExecID        string              `json:"exec_id"`
+	EpisodeType   EpisodeType         `json:"episode_type"`
+	Handles       map[string]string   `json:"handles,omitempty"` // {trace_id, order_id, …}
+	Evidence      []EpisodeEvidence   `json:"evidence,omitempty"`
+	Verdict       *EpisodeVerdict     `json:"verdict,omitempty"`
+	LoopGuard     EpisodeLoopGuard    `json:"loop_guard"`
+	AuditTrail    []EpisodeAuditEntry `json:"audit_trail,omitempty"`
+	SchemaVersion int                 `json:"schema_version"`
+	CreatedAt     time.Time           `json:"created_at"`
+	UpdatedAt     time.Time           `json:"updated_at"`
+}
+
+// EpisodeArtifact stores large evidence payloads that must not be inlined.
+type EpisodeArtifact struct {
+	ID          string    `json:"id"`
+	EpisodeID   string    `json:"episode_id"`
+	EvidenceID  string    `json:"evidence_id"`
+	ContentType string    `json:"content_type"` // "log_dump" | "trace_export" | "screenshot" | "raw"
+	SizeBytes   int64     `json:"size_bytes"`
+	StorageURI  string    `json:"storage_uri"` // "artifact://{exec_id}/{ev_id}"
+	Content     string    `json:"content,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
 }

@@ -47,6 +47,10 @@ interface GraphState {
   setActiveExecutionId: (id: string | null) => void
   setExecutionResult: (result: ExecutionNodesResponse | null) => void
 
+  // History panel
+  showHistory: boolean
+  setShowHistory: (show: boolean) => void
+
   // Serialization
   toDAGConfig: () => DAGConfig
   loadFromDAGConfig: (dag: DAGConfig) => void
@@ -144,6 +148,9 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     set({ isRunning: false })
   },
   setActiveExecutionId: (id) => set({ activeExecutionId: id }),
+
+  showHistory: false,
+  setShowHistory: (show) => set({ showHistory: show }),
 
   setExecutionResult: (result) => {
     if (!result) {

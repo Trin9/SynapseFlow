@@ -10,8 +10,13 @@ import (
 	"github.com/Trin9/SynapseFlow/backend/pkg/models"
 )
 
+// Version is set at build time via -ldflags "-X ...metrics.Version=x.y.z".
+// Falls back to "dev" when not set.
+var Version = "0.1.0"
+
 type Collector struct {
 	mu                   sync.RWMutex
+	startTime            time.Time
 	executionsByStatus   map[string]int
 	executionDurations   []float64
 	nodeDurationsByType  map[string][]float64
@@ -21,6 +26,7 @@ type Collector struct {
 
 func NewCollector() *Collector {
 	return &Collector{
+		startTime:            time.Now(),
 		executionsByStatus:   make(map[string]int),
 		executionDurations:   make([]float64, 0, 32),
 		nodeDurationsByType:  make(map[string][]float64),
@@ -78,6 +84,15 @@ func (c *Collector) RenderPrometheus() string {
 	defer c.mu.RUnlock()
 
 	var b strings.Builder
+
+	// Build info and uptime
+	b.WriteString("# HELP synapse_build_info A metric with a constant 1 value labeled by version\n")
+	b.WriteString("# TYPE synapse_build_info gauge\n")
+	b.WriteString(fmt.Sprintf("synapse_build_info{version=%q} 1\n", Version))
+	b.WriteString("# HELP synapse_up_seconds Total seconds the service has been running\n")
+	b.WriteString("# TYPE synapse_up_seconds gauge\n")
+	b.WriteString(fmt.Sprintf("synapse_up_seconds %.3f\n", time.Since(c.startTime).Seconds()))
+
 	b.WriteString("# HELP synapse_executions_total Total workflow executions by status\n")
 	b.WriteString("# TYPE synapse_executions_total counter\n")
 	statuses := sortedKeys(c.executionsByStatus)
