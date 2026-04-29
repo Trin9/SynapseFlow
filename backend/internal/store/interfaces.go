@@ -24,6 +24,13 @@ type ExecutionStore interface {
 	ListNodeResults(context.Context, string) ([]models.NodeResult, error)
 	SaveCheckpoint(context.Context, *models.ExecutionCheckpoint) error
 	GetCheckpoint(context.Context, string) (*models.ExecutionCheckpoint, error)
+	// ListByDAGID returns executions for a specific DAG, newest first.
+	// limit ≤ 0 means no limit; offset 0 means from the start.
+	ListByDAGID(ctx context.Context, dagID string, limit, offset int) ([]*models.Execution, error)
+	// ListByStatus returns executions matching the given status, newest first.
+	ListByStatus(ctx context.Context, status models.ExecutionStatus) ([]*models.Execution, error)
+	// GetExecutionSummary builds a high-level summary view of a single execution.
+	GetExecutionSummary(ctx context.Context, execID string) (*models.ExecutionSummaryView, error)
 }
 
 type AuditStore interface {
@@ -52,6 +59,22 @@ type EpisodeStore interface {
 	SaveArtifact(ctx context.Context, artifact *models.EpisodeArtifact) error
 	// ListArtifacts returns all artifacts for an Episode.
 	ListArtifacts(ctx context.Context, episodeID string) ([]*models.EpisodeArtifact, error)
+
+	// --- View projection methods (M1.2) ---
+	// Data sources are projections of existing Episode fields; no new tables.
+
+	// ListEpisodeSummariesByExecution returns lightweight summary cards for all
+	// episodes of a given execution, ordered by created_at ascending.
+	ListEpisodeSummariesByExecution(ctx context.Context, execID string) ([]models.EpisodeSummaryView, error)
+	// ListProcessTraceByEpisode returns the process-trace timeline for a single
+	// episode, derived from its Evidence and HumanInterventions.
+	ListProcessTraceByEpisode(ctx context.Context, episodeID string) ([]models.ProcessTraceEntryView, error)
+	// ListRuntimeFactsByEpisode returns runtime facts (evidence projections) for
+	// a single episode.
+	ListRuntimeFactsByEpisode(ctx context.Context, episodeID string) ([]models.RuntimeFactView, error)
+	// GetReviewStateByExecution returns the aggregate human-review state for an
+	// execution, derived from HumanInterventions across its episodes.
+	GetReviewStateByExecution(ctx context.Context, execID string) (*models.ReviewStateView, error)
 }
 
 type SearchQuery struct {

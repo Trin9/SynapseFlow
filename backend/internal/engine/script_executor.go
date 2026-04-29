@@ -70,14 +70,23 @@ func (e *ScriptExecutor) Execute(ctx context.Context, node models.Node, state *m
 	// Write output to GlobalState so downstream nodes can reference it via {{node_id}}
 	state.Set(node.ID, output)
 
-	// Episode tracking: Hard Node appends fact evidence.
+	// Episode tracking: Hard Node appends fact evidence with collector spec.
 	if e.Writer != nil {
 		episodeID := configString(node.Config, "episode_id")
 		if episodeID == "" {
 			episodeID = state.GetString("__episode_id__")
 		}
 		if episodeID != "" {
-			_ = e.Writer.AppendFact(ctx, episodeID, node.ID, node.Type, node.Name, output)
+			spec := &models.EvidenceCollectorSpec{
+				CollectorType: "script",
+				RawCommand:    command, // fully-resolved command after {{template}} substitution
+			}
+			_ = e.Writer.AppendFactWithSpec(ctx, episodeID, node.ID, node.Type, node.Name, output, spec)
+
+			// Handle tracking: if config specifies episode_handle, record a structured identifier.
+			if handleType := configString(node.Config, "episode_handle"); handleType != "" && output != "" {
+				_ = e.Writer.AppendHandle(ctx, episodeID, models.EpisodeHandleType(handleType), output, node.ID)
+			}
 		}
 	}
 

@@ -14,7 +14,8 @@ import (
 // node.Config["arguments"] (optional) is a JSON object passed as tool arguments.
 // Any string values inside arguments are template-rendered via RenderTemplate.
 type MCPExecutor struct {
-	MCP mcp.ToolCaller
+	MCP    mcp.ToolCaller
+	Writer *EpisodeWriter // optional; when set, successful calls are recorded as evidence
 }
 
 func (e *MCPExecutor) Execute(ctx context.Context, node models.Node, state *models.GlobalState) models.NodeResult {
@@ -60,6 +61,24 @@ func (e *MCPExecutor) Execute(ctx context.Context, node models.Node, state *mode
 	result.Output = out
 	result.Duration = time.Since(start)
 	state.Set(node.ID, out)
+
+	// Episode tracking: Hard Node appends fact evidence with collector spec.
+	if e.Writer != nil {
+		episodeID := configString(node.Config, "episode_id")
+		if episodeID == "" {
+			episodeID = state.GetString("__episode_id__")
+		}
+		if episodeID != "" {
+			spec := &models.EvidenceCollectorSpec{
+				CollectorType: "mcp_tool",
+				Params: map[string]interface{}{
+					"tool_name": toolName,
+				},
+			}
+			_ = e.Writer.AppendFactWithSpec(ctx, episodeID, node.ID, node.Type, node.Name, out, spec)
+		}
+	}
+
 	return result
 }
 

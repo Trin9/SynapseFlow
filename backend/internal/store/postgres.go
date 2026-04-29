@@ -302,6 +302,66 @@ func (s *PostgresExecutionStore) GetCheckpoint(ctx context.Context, executionID 
 	return &checkpoint, nil
 }
 
+// ListByDAGID returns executions for a specific DAG, newest first.
+// limit ≤ 0 means no limit; offset 0 means from the start.
+func (s *PostgresExecutionStore) ListByDAGID(ctx context.Context, dagID string, limit, offset int) ([]*models.Execution, error) {
+	q := `SELECT id, dag_id, dag_name, status, error, started_at, ended_at, duration_ms, state, loop_counts
+		FROM executions WHERE dag_id = $1 ORDER BY started_at DESC`
+	args := []interface{}{dagID}
+	if limit > 0 {
+		args = append(args, limit)
+		q += fmt.Sprintf(" LIMIT $%d", len(args))
+	}
+	if offset > 0 {
+		args = append(args, offset)
+		q += fmt.Sprintf(" OFFSET $%d", len(args))
+	}
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*models.Execution
+	for rows.Next() {
+		exec, err := scanExecution(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, exec)
+	}
+	return out, rows.Err()
+}
+
+// ListByStatus returns executions matching the given status, newest first.
+func (s *PostgresExecutionStore) ListByStatus(ctx context.Context, status models.ExecutionStatus) ([]*models.Execution, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, dag_id, dag_name, status, error, started_at, ended_at, duration_ms, state, loop_counts
+		FROM executions WHERE status = $1 ORDER BY started_at DESC
+	`, string(status))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*models.Execution
+	for rows.Next() {
+		exec, err := scanExecution(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, exec)
+	}
+	return out, rows.Err()
+}
+
+// GetExecutionSummary builds a high-level summary view of a single execution.
+func (s *PostgresExecutionStore) GetExecutionSummary(ctx context.Context, execID string) (*models.ExecutionSummaryView, error) {
+	exec, err := s.Get(ctx, execID)
+	if err != nil {
+		return nil, err
+	}
+	return projectExecutionToSummary(exec), nil
+}
+
 type PostgresAuditStore struct{ db *sql.DB }
 
 func (s *PostgresAuditStore) Record(ctx context.Context, entry audit.Entry) error {
@@ -340,19 +400,19 @@ func (s *PostgresExperienceStore) Save(ctx context.Context, exp *models.Experien
 		return err
 	}
 	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO experiences (id, alert_type, service_name, tags, symptom, root_cause, action_taken, summary, document, created_at, updated_at)
-		VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11)
+		INSERT INTO experiences (id, execution_id, alert_type, service_name, tags, symptom, root_cause, action_taken, summary, document, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12)
 		ON CONFLICT (id)
-		DO UPDATE SET alert_type = EXCLUDED.alert_type, service_name = EXCLUDED.service_name, tags = EXCLUDED.tags,
+		DO UPDATE SET execution_id = EXCLUDED.execution_id, alert_type = EXCLUDED.alert_type, service_name = EXCLUDED.service_name, tags = EXCLUDED.tags,
 		  symptom = EXCLUDED.symptom, root_cause = EXCLUDED.root_cause, action_taken = EXCLUDED.action_taken,
 		  summary = EXCLUDED.summary, document = EXCLUDED.document, updated_at = EXCLUDED.updated_at
-	`, exp.ID, exp.AlertType, exp.ServiceName, tagsJSON, exp.Symptom, exp.RootCause, exp.ActionTaken, exp.Summary, exp.Document, exp.CreatedAt.UTC(), exp.UpdatedAt.UTC())
+	`, exp.ID, exp.ExecutionID, exp.AlertType, exp.ServiceName, tagsJSON, exp.Symptom, exp.RootCause, exp.ActionTaken, exp.Summary, exp.Document, exp.CreatedAt.UTC(), exp.UpdatedAt.UTC())
 	return err
 }
 
 func (s *PostgresExperienceStore) List(ctx context.Context) ([]models.Experience, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, alert_type, service_name, tags, symptom, root_cause, action_taken, summary, document, created_at, updated_at
+		SELECT id, execution_id, alert_type, service_name, tags, symptom, root_cause, action_taken, summary, document, created_at, updated_at
 		FROM experiences ORDER BY created_at DESC
 	`)
 	if err != nil {
@@ -364,7 +424,7 @@ func (s *PostgresExperienceStore) List(ctx context.Context) ([]models.Experience
 
 func (s *PostgresExperienceStore) Search(ctx context.Context, query SearchQuery) ([]models.Experience, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, alert_type, service_name, tags, symptom, root_cause, action_taken, summary, document, created_at, updated_at
+		SELECT id, execution_id, alert_type, service_name, tags, symptom, root_cause, action_taken, summary, document, created_at, updated_at
 		FROM experiences
 		WHERE ($1 = '' OR alert_type = $1)
 		  AND ($2 = '' OR service_name = $2)
@@ -451,7 +511,7 @@ func scanExperiences(rows *sql.Rows) ([]models.Experience, error) {
 	for rows.Next() {
 		var exp models.Experience
 		var tagsJSON []byte
-		if err := rows.Scan(&exp.ID, &exp.AlertType, &exp.ServiceName, &tagsJSON, &exp.Symptom, &exp.RootCause, &exp.ActionTaken, &exp.Summary, &exp.Document, &exp.CreatedAt, &exp.UpdatedAt); err != nil {
+		if err := rows.Scan(&exp.ID, &exp.ExecutionID, &exp.AlertType, &exp.ServiceName, &tagsJSON, &exp.Symptom, &exp.RootCause, &exp.ActionTaken, &exp.Summary, &exp.Document, &exp.CreatedAt, &exp.UpdatedAt); err != nil {
 			return nil, err
 		}
 		if len(tagsJSON) > 0 {
@@ -586,26 +646,97 @@ func (s *PostgresEpisodeStore) Create(ctx context.Context, ep *models.Episode) e
 	verdictJSON, _ := json.Marshal(ep.Verdict)
 	loopGuardJSON, _ := json.Marshal(ep.LoopGuard)
 	auditTrailJSON, _ := json.Marshal(ep.AuditTrail)
+	humanInterventionsJSON, _ := json.Marshal(ep.HumanInterventions)
+
+	var triggerJSON, actionContextJSON, investigationContextJSON, memoryExtractionJSON interface{}
+	if ep.Trigger != nil {
+		b, _ := json.Marshal(ep.Trigger)
+		triggerJSON = b
+	}
+	if ep.ActionContext != nil {
+		b, _ := json.Marshal(ep.ActionContext)
+		actionContextJSON = b
+	}
+	if ep.InvestigationContext != nil {
+		b, _ := json.Marshal(ep.InvestigationContext)
+		investigationContextJSON = b
+	}
+	if ep.MemoryExtraction != nil {
+		b, _ := json.Marshal(ep.MemoryExtraction)
+		memoryExtractionJSON = b
+	}
+	var parentEpisodeID interface{}
+	if ep.ParentEpisodeID != "" {
+		parentEpisodeID = ep.ParentEpisodeID
+	}
+
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO episodes (id, exec_id, episode_type, handles, evidence, verdict, loop_guard, audit_trail, schema_version, created_at, updated_at)
-		VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10, $11)
-	`, ep.ID, ep.ExecID, string(ep.EpisodeType),
+		INSERT INTO episodes (
+			id, exec_id, episode_type, status,
+			handles, evidence, verdict, loop_guard, audit_trail,
+			trigger, action_context, investigation_context, memory_extraction,
+			concluded_at, human_interventions, parent_episode_id,
+			schema_version, created_at, updated_at
+		) VALUES (
+			$1, $2, $3, $4,
+			$5::jsonb, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb,
+			$10::jsonb, $11::jsonb, $12::jsonb, $13::jsonb,
+			$14, $15::jsonb, $16,
+			$17, $18, $19
+		)
+	`, ep.ID, ep.ExecID, string(ep.EpisodeType), string(ep.Status),
 		handlesJSON, evidenceJSON, verdictJSON, loopGuardJSON, auditTrailJSON,
+		triggerJSON, actionContextJSON, investigationContextJSON, memoryExtractionJSON,
+		ep.ConcludedAt, humanInterventionsJSON, parentEpisodeID,
 		ep.SchemaVersion, ep.CreatedAt.UTC(), ep.UpdatedAt.UTC())
 	return err
 }
 
 func (s *PostgresEpisodeStore) Update(ctx context.Context, ep *models.Episode) error {
+	handlesJSON, _ := json.Marshal(ep.Handles)
 	evidenceJSON, _ := json.Marshal(ep.Evidence)
 	verdictJSON, _ := json.Marshal(ep.Verdict)
 	loopGuardJSON, _ := json.Marshal(ep.LoopGuard)
 	auditTrailJSON, _ := json.Marshal(ep.AuditTrail)
+	humanInterventionsJSON, _ := json.Marshal(ep.HumanInterventions)
+
+	var triggerJSON, actionContextJSON, investigationContextJSON, memoryExtractionJSON interface{}
+	if ep.Trigger != nil {
+		b, _ := json.Marshal(ep.Trigger)
+		triggerJSON = b
+	}
+	if ep.ActionContext != nil {
+		b, _ := json.Marshal(ep.ActionContext)
+		actionContextJSON = b
+	}
+	if ep.InvestigationContext != nil {
+		b, _ := json.Marshal(ep.InvestigationContext)
+		investigationContextJSON = b
+	}
+	if ep.MemoryExtraction != nil {
+		b, _ := json.Marshal(ep.MemoryExtraction)
+		memoryExtractionJSON = b
+	}
+	var parentEpisodeID interface{}
+	if ep.ParentEpisodeID != "" {
+		parentEpisodeID = ep.ParentEpisodeID
+	}
+
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE episodes
-		SET evidence = $2::jsonb, verdict = $3::jsonb, loop_guard = $4::jsonb,
-		    audit_trail = $5::jsonb, updated_at = $6
+		SET episode_type = $2, status = $3,
+		    handles = $4::jsonb, evidence = $5::jsonb, verdict = $6::jsonb,
+		    loop_guard = $7::jsonb, audit_trail = $8::jsonb,
+		    trigger = $9::jsonb, action_context = $10::jsonb,
+		    investigation_context = $11::jsonb, memory_extraction = $12::jsonb,
+		    concluded_at = $13, human_interventions = $14::jsonb,
+		    parent_episode_id = $15, schema_version = $16, updated_at = $17
 		WHERE id = $1
-	`, ep.ID, evidenceJSON, verdictJSON, loopGuardJSON, auditTrailJSON, ep.UpdatedAt.UTC())
+	`, ep.ID, string(ep.EpisodeType), string(ep.Status),
+		handlesJSON, evidenceJSON, verdictJSON, loopGuardJSON, auditTrailJSON,
+		triggerJSON, actionContextJSON, investigationContextJSON, memoryExtractionJSON,
+		ep.ConcludedAt, humanInterventionsJSON,
+		parentEpisodeID, ep.SchemaVersion, ep.UpdatedAt.UTC())
 	if err != nil {
 		return err
 	}
@@ -621,7 +752,11 @@ func (s *PostgresEpisodeStore) Update(ctx context.Context, ep *models.Episode) e
 
 func (s *PostgresEpisodeStore) Get(ctx context.Context, id string) (*models.Episode, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, exec_id, episode_type, handles, evidence, verdict, loop_guard, audit_trail, schema_version, created_at, updated_at
+		SELECT id, exec_id, episode_type, status,
+		       handles, evidence, verdict, loop_guard, audit_trail,
+		       trigger, action_context, investigation_context, memory_extraction,
+		       concluded_at, human_interventions, parent_episode_id,
+		       schema_version, created_at, updated_at
 		FROM episodes WHERE id = $1
 	`, id)
 	return scanEpisode(row)
@@ -629,7 +764,11 @@ func (s *PostgresEpisodeStore) Get(ctx context.Context, id string) (*models.Epis
 
 func (s *PostgresEpisodeStore) ListByExecution(ctx context.Context, execID string) ([]*models.Episode, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, exec_id, episode_type, handles, evidence, verdict, loop_guard, audit_trail, schema_version, created_at, updated_at
+		SELECT id, exec_id, episode_type, status,
+		       handles, evidence, verdict, loop_guard, audit_trail,
+		       trigger, action_context, investigation_context, memory_extraction,
+		       concluded_at, human_interventions, parent_episode_id,
+		       schema_version, created_at, updated_at
 		FROM episodes WHERE exec_id = $1 ORDER BY created_at ASC
 	`, execID)
 	if err != nil {
@@ -686,10 +825,15 @@ func (s *PostgresEpisodeStore) ListArtifacts(ctx context.Context, episodeID stri
 func scanEpisode(row scanner) (*models.Episode, error) {
 	var ep models.Episode
 	var handlesJSON, evidenceJSON, verdictJSON, loopGuardJSON, auditTrailJSON []byte
-	var epType string
+	var humanInterventionsJSON []byte
+	var triggerJSON, actionContextJSON, investigationContextJSON, memoryExtractionJSON []byte
+	var epType, epStatus string
+	var parentEpisodeID sql.NullString
 	if err := row.Scan(
-		&ep.ID, &ep.ExecID, &epType,
+		&ep.ID, &ep.ExecID, &epType, &epStatus,
 		&handlesJSON, &evidenceJSON, &verdictJSON, &loopGuardJSON, &auditTrailJSON,
+		&triggerJSON, &actionContextJSON, &investigationContextJSON, &memoryExtractionJSON,
+		&ep.ConcludedAt, &humanInterventionsJSON, &parentEpisodeID,
 		&ep.SchemaVersion, &ep.CreatedAt, &ep.UpdatedAt,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -698,6 +842,8 @@ func scanEpisode(row scanner) (*models.Episode, error) {
 		return nil, err
 	}
 	ep.EpisodeType = models.EpisodeType(epType)
+	ep.Status = models.EpisodeStatus(epStatus)
+	ep.ParentEpisodeID = parentEpisodeID.String
 	if len(handlesJSON) > 0 {
 		_ = json.Unmarshal(handlesJSON, &ep.Handles)
 	}
@@ -714,6 +860,25 @@ func scanEpisode(row scanner) (*models.Episode, error) {
 	if len(auditTrailJSON) > 0 {
 		_ = json.Unmarshal(auditTrailJSON, &ep.AuditTrail)
 	}
+	if len(humanInterventionsJSON) > 0 {
+		_ = json.Unmarshal(humanInterventionsJSON, &ep.HumanInterventions)
+	}
+	if len(triggerJSON) > 0 && string(triggerJSON) != "null" {
+		ep.Trigger = &models.EpisodeTrigger{}
+		_ = json.Unmarshal(triggerJSON, ep.Trigger)
+	}
+	if len(actionContextJSON) > 0 && string(actionContextJSON) != "null" {
+		ep.ActionContext = &models.ActionContext{}
+		_ = json.Unmarshal(actionContextJSON, ep.ActionContext)
+	}
+	if len(investigationContextJSON) > 0 && string(investigationContextJSON) != "null" {
+		ep.InvestigationContext = &models.InvestigationContext{}
+		_ = json.Unmarshal(investigationContextJSON, ep.InvestigationContext)
+	}
+	if len(memoryExtractionJSON) > 0 && string(memoryExtractionJSON) != "null" {
+		ep.MemoryExtraction = &models.EpisodeMemoryExtraction{}
+		_ = json.Unmarshal(memoryExtractionJSON, ep.MemoryExtraction)
+	}
 	return &ep, nil
 }
 
@@ -722,4 +887,45 @@ func nullableString(s string) interface{} {
 		return nil
 	}
 	return s
+}
+
+// ---------------------------------------------------------------------------
+// PostgresEpisodeStore – view projection methods (M1.2)
+// Delegate to existing Get/ListByExecution and call package-level projections.
+// ---------------------------------------------------------------------------
+
+func (s *PostgresEpisodeStore) ListEpisodeSummariesByExecution(ctx context.Context, execID string) ([]models.EpisodeSummaryView, error) {
+	eps, err := s.ListByExecution(ctx, execID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]models.EpisodeSummaryView, len(eps))
+	for i, ep := range eps {
+		out[i] = projectEpisodeToSummary(ep)
+	}
+	return out, nil
+}
+
+func (s *PostgresEpisodeStore) ListProcessTraceByEpisode(ctx context.Context, episodeID string) ([]models.ProcessTraceEntryView, error) {
+	ep, err := s.Get(ctx, episodeID)
+	if err != nil {
+		return nil, err
+	}
+	return projectEpisodeToProcessTrace(ep), nil
+}
+
+func (s *PostgresEpisodeStore) ListRuntimeFactsByEpisode(ctx context.Context, episodeID string) ([]models.RuntimeFactView, error) {
+	ep, err := s.Get(ctx, episodeID)
+	if err != nil {
+		return nil, err
+	}
+	return projectEpisodeToRuntimeFacts(ep), nil
+}
+
+func (s *PostgresEpisodeStore) GetReviewStateByExecution(ctx context.Context, execID string) (*models.ReviewStateView, error) {
+	eps, err := s.ListByExecution(ctx, execID)
+	if err != nil {
+		return nil, err
+	}
+	return projectEpisodesToReviewState(eps), nil
 }

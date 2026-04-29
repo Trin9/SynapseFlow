@@ -1,6 +1,10 @@
 // Node types matching backend models.NodeType
 export type NodeType = 'script' | 'llm' | 'mcp' | 'human' | 'router'
 
+// Frontend-only extension: 'super' is a canvas-only grouping node that is
+// stripped from the DAGConfig before submission to the backend.
+export type AnyNodeType = NodeType | 'super'
+
 // Matches backend models.Node
 export interface WorkflowNode {
   id: string

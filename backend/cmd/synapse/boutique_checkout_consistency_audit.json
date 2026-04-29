@@ -14,7 +14,7 @@
       "id": "frontend_health",
       "name": "Check frontend health",
       "type": "script",
-      "action": "BASE_URL=\"${BOUTIQUE_FRONTEND_BASE_URL:-http://127.0.0.1:8080}\"; COOKIE_JAR=/tmp/synapse-boutique-checkout-cookie.txt; rm -f \"$COOKIE_JAR\"; curl -fsS -c \"$COOKIE_JAR\" \"$BASE_URL/_healthz\"",
+      "action": "BASE_URL=\"${BOUTIQUE_FRONTEND_BASE_URL:-http://127.0.0.1:18080}\"; COOKIE_JAR=/tmp/synapse-boutique-checkout-cookie.txt; rm -f \"$COOKIE_JAR\"; curl -fsS -c \"$COOKIE_JAR\" \"$BASE_URL/_healthz\"",
       "config": {
         "timeout_seconds": 20
       }
@@ -23,16 +23,17 @@
       "id": "discover_product",
       "name": "Discover product id",
       "type": "script",
-      "action": "BASE_URL=\"${BOUTIQUE_FRONTEND_BASE_URL:-http://127.0.0.1:8080}\"; COOKIE_JAR=/tmp/synapse-boutique-checkout-cookie.txt; curl -fsS -c \"$COOKIE_JAR\" -b \"$COOKIE_JAR\" \"$BASE_URL/\" | grep -oE '/product/[A-Z0-9]+' | head -n1 | cut -d/ -f3",
+      "action": "BASE_URL=\"${BOUTIQUE_FRONTEND_BASE_URL:-http://127.0.0.1:18080}\"; COOKIE_JAR=/tmp/synapse-boutique-checkout-cookie.txt; curl -fsS -c \"$COOKIE_JAR\" -b \"$COOKIE_JAR\" \"$BASE_URL/\" | grep -oE '/product/[A-Z0-9]+' | head -n1 | cut -d/ -f3",
       "config": {
-        "timeout_seconds": 30
+        "timeout_seconds": 30,
+        "episode_handle": "product_id"
       }
     },
     {
       "id": "add_to_cart",
       "name": "Add product to cart",
       "type": "script",
-      "action": "BASE_URL=\"${BOUTIQUE_FRONTEND_BASE_URL:-http://127.0.0.1:8080}\"; COOKIE_JAR=/tmp/synapse-boutique-checkout-cookie.txt; curl -sS -c \"$COOKIE_JAR\" -b \"$COOKIE_JAR\" -X POST \"$BASE_URL/cart\" --data-urlencode \"product_id={{discover_product}}\" --data-urlencode 'quantity=1' -D - -o /dev/null",
+      "action": "BASE_URL=\"${BOUTIQUE_FRONTEND_BASE_URL:-http://127.0.0.1:18080}\"; COOKIE_JAR=/tmp/synapse-boutique-checkout-cookie.txt; curl -sS -c \"$COOKIE_JAR\" -b \"$COOKIE_JAR\" -X POST \"$BASE_URL/cart\" --data-urlencode \"product_id={{discover_product}}\" --data-urlencode 'quantity=1' -D - -o /dev/null",
       "config": {
         "timeout_seconds": 30
       }
@@ -43,14 +44,15 @@
       "type": "script",
       "action": "awk '$6 == \"shop_session-id\" {print $7}' /tmp/synapse-boutique-checkout-cookie.txt | tail -n1",
       "config": {
-        "timeout_seconds": 10
+        "timeout_seconds": 10,
+        "episode_handle": "session_id"
       }
     },
     {
       "id": "verify_cart_after_add",
       "name": "Verify cart after add",
       "type": "script",
-      "action": "BASE_URL=\"${BOUTIQUE_FRONTEND_BASE_URL:-http://127.0.0.1:8080}\"; COOKIE_JAR=/tmp/synapse-boutique-checkout-cookie.txt; if curl -fsS -c \"$COOKIE_JAR\" -b \"$COOKIE_JAR\" \"$BASE_URL/cart\" | grep -q 'SKU #{{discover_product}}'; then echo 'cart_contains_product'; else echo 'cart_missing_product'; fi",
+      "action": "BASE_URL=\"${BOUTIQUE_FRONTEND_BASE_URL:-http://127.0.0.1:18080}\"; COOKIE_JAR=/tmp/synapse-boutique-checkout-cookie.txt; if curl -fsS -c \"$COOKIE_JAR\" -b \"$COOKIE_JAR\" \"$BASE_URL/cart\" | grep -q 'SKU #{{discover_product}}'; then echo 'cart_contains_product'; else echo 'cart_missing_product'; fi",
       "config": {
         "timeout_seconds": 30
       }
@@ -59,7 +61,7 @@
       "id": "place_order",
       "name": "Place order",
       "type": "script",
-      "action": "BASE_URL=\"${BOUTIQUE_FRONTEND_BASE_URL:-http://127.0.0.1:8080}\"; COOKIE_JAR=/tmp/synapse-boutique-checkout-cookie.txt; curl -sS -c \"$COOKIE_JAR\" -b \"$COOKIE_JAR\" -X POST \"$BASE_URL/cart/checkout\" --data-urlencode 'email=synapse@example.com' --data-urlencode 'street_address=1600 Amphitheatre Pkwy' --data-urlencode 'zip_code=94043' --data-urlencode 'city=Mountain View' --data-urlencode 'state=CA' --data-urlencode 'country=United States' --data-urlencode 'credit_card_number=4432801561520454' --data-urlencode 'credit_card_expiration_month=12' --data-urlencode 'credit_card_expiration_year=2030' --data-urlencode 'credit_card_cvv=672' -w '\nHTTP_STATUS=%{http_code}\n'",
+      "action": "BASE_URL=\"${BOUTIQUE_FRONTEND_BASE_URL:-http://127.0.0.1:18080}\"; COOKIE_JAR=/tmp/synapse-boutique-checkout-cookie.txt; curl -sS -c \"$COOKIE_JAR\" -b \"$COOKIE_JAR\" -X POST \"$BASE_URL/cart/checkout\" --data-urlencode 'email=synapse@example.com' --data-urlencode 'street_address=1600 Amphitheatre Pkwy' --data-urlencode 'zip_code=94043' --data-urlencode 'city=Mountain View' --data-urlencode 'state=CA' --data-urlencode 'country=United States' --data-urlencode 'credit_card_number=4432801561520454' --data-urlencode 'credit_card_expiration_month=12' --data-urlencode 'credit_card_expiration_year=2030' --data-urlencode 'credit_card_cvv=672' -w '\nHTTP_STATUS=%{http_code}\n'",
       "config": {
         "timeout_seconds": 60
       }
@@ -68,7 +70,7 @@
       "id": "verify_cart_after_checkout",
       "name": "Verify cart after checkout",
       "type": "script",
-      "action": "BASE_URL=\"${BOUTIQUE_FRONTEND_BASE_URL:-http://127.0.0.1:8080}\"; COOKIE_JAR=/tmp/synapse-boutique-checkout-cookie.txt; if curl -fsS -c \"$COOKIE_JAR\" -b \"$COOKIE_JAR\" \"$BASE_URL/cart\" | grep -q 'Your shopping cart is empty!'; then echo 'cart_cleared'; else echo 'cart_not_empty'; fi",
+      "action": "BASE_URL=\"${BOUTIQUE_FRONTEND_BASE_URL:-http://127.0.0.1:18080}\"; COOKIE_JAR=/tmp/synapse-boutique-checkout-cookie.txt; if curl -fsS -c \"$COOKIE_JAR\" -b \"$COOKIE_JAR\" \"$BASE_URL/cart\" | grep -q 'Your shopping cart is empty!'; then echo 'cart_cleared'; else echo 'cart_not_empty'; fi",
       "config": {
         "timeout_seconds": 30
       }
@@ -115,7 +117,7 @@
           "confidence": "low",
           "missing_info": [],
           "next_action": "human_review",
-          "summary": "",
+          "summary": "Audit pending — insufficient evidence to determine outcome.",
           "evidence": []
         },
         "required_json_keys": [
@@ -205,8 +207,7 @@
     },
     {
       "from": "audit_order_consistency",
-      "to": "route_audit",
-      "condition": "{{audit_order_consistency}}"
+      "to": "route_audit"
     },
     {
       "from": "route_audit",

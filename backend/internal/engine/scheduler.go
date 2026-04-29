@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Trin9/SynapseFlow/backend/internal/memory"
+	"github.com/Trin9/SynapseFlow/backend/internal/store"
 	"github.com/Trin9/SynapseFlow/backend/pkg/logger"
 	"github.com/Trin9/SynapseFlow/backend/pkg/models"
 )
@@ -19,13 +20,20 @@ import (
 // It runs nodes concurrently within each execution level, respecting dependency ordering.
 // When a node fails, all downstream dependents are marked as "skipped".
 type Scheduler struct {
-	executors map[models.NodeType]NodeExecutor
-	retriever *memory.Retriever
+	executors    map[models.NodeType]NodeExecutor
+	retriever    *memory.Retriever
+	episodeStore store.EpisodeStore // optional; when set, LoopGuard limits are read from the Episode
 }
 
 // NewScheduler creates a Scheduler with the provided executors for each node type.
 func NewScheduler(executors map[models.NodeType]NodeExecutor, retriever *memory.Retriever) *Scheduler {
 	return &Scheduler{executors: executors, retriever: retriever}
+}
+
+// SetEpisodeStore attaches an EpisodeStore so the scheduler can read and update
+// LoopGuard limits from the active Episode.  Must be called before Execute.
+func (s *Scheduler) SetEpisodeStore(es store.EpisodeStore) {
+	s.episodeStore = es
 }
 
 // ExecuteResult holds the complete outcome of a workflow execution.
@@ -288,14 +296,34 @@ func (s *Scheduler) handleOutgoingEdges(
 
 		targetNode := match.target
 		count := state.IncrementLoopCount(targetNode.ID)
-		if count > 3 {
-			log.Warnw("Circuit breaker triggered", "node_id", targetNode.ID, "count", count)
+
+		// Determine the circuit-breaker limit. Default is 3. When an Episode is
+		// linked to this execution (via __episode_id__ in GlobalState) and has a
+		// LoopGuard.MaxIterations > 0, that value overrides the default. We also
+		// increment LoopGuard.CurrentIteration on every pass so the Episode
+		// reflects how far the loop progressed.
+		maxIter := 3
+		if s.episodeStore != nil {
+			if episodeID := state.GetString("__episode_id__"); episodeID != "" {
+				if ep, epErr := s.episodeStore.Get(ctx, episodeID); epErr == nil {
+					if ep.LoopGuard.MaxIterations > 0 {
+						maxIter = ep.LoopGuard.MaxIterations
+					}
+					ep.LoopGuard.CurrentIteration = count
+					ep.UpdatedAt = time.Now().UTC()
+					_ = s.episodeStore.Update(ctx, ep)
+				}
+			}
+		}
+
+		if count > maxIter {
+			log.Warnw("Circuit breaker triggered", "node_id", targetNode.ID, "count", count, "max", maxIter)
 			result := models.NodeResult{
 				NodeID:   targetNode.ID,
 				NodeName: targetNode.Name,
 				NodeType: targetNode.Type,
 				Status:   "error",
-				Error:    fmt.Sprintf("circuit breaker: max loop count (3) exceeded for node %s", targetNode.ID),
+				Error:    fmt.Sprintf("circuit breaker: max loop count (%d) exceeded for node %s", maxIter, targetNode.ID),
 				Duration: 0,
 			}
 			resultsMu.Lock()

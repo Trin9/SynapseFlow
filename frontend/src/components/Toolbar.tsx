@@ -1,156 +1,133 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useGraphStore } from '@/hooks/useGraphStore'
-import { createDAG, getDAG, getExecutionNodes, listDAGs, runWorkflow, updateDAG } from '@/api/client'
-import type { DAGConfig } from '@/types'
+import { useExecutionPoller } from '@/hooks/useExecutionPoller'
+import { useDAGPersistence } from '@/hooks/useDAGPersistence'
+import { useTheme } from '@/contexts/ThemeContext'
+import { runWorkflow, getExecutionNodes } from '@/api/client'
 
 /**
- * Top toolbar with workflow name, Run button, and Clear button.
+ * Top toolbar: workflow name, mode toggle, save/load, clear, history, run.
+ *
+ * Business logic lives in:
+ *  - useExecutionPoller  — 500 ms polling while a run is active
+ *  - useDAGPersistence   — DAG CRUD (save / load / list)
+ *
+ * M2.3: BUILDER controls are hidden in REVIEW mode; REVIEW controls are hidden
+ * in BUILDER mode.  The mode toggle and logo are always visible.
  */
 export function Toolbar() {
-  const workflowId = useGraphStore((s) => s.workflowId)
+  const appMode = useGraphStore((s) => s.appMode)
+  const setAppMode = useGraphStore((s) => s.setAppMode)
+  const exitReviewMode = useGraphStore((s) => s.exitReviewMode)
   const workflowName = useGraphStore((s) => s.workflowName)
-  const setWorkflowId = useGraphStore((s) => s.setWorkflowId)
   const setWorkflowName = useGraphStore((s) => s.setWorkflowName)
   const isRunning = useGraphStore((s) => s.isRunning)
   const setIsRunning = useGraphStore((s) => s.setIsRunning)
   const setExecutionResult = useGraphStore((s) => s.setExecutionResult)
-  const activeExecutionId = useGraphStore((s) => s.activeExecutionId)
   const setActiveExecutionId = useGraphStore((s) => s.setActiveExecutionId)
+  const activeExecutionId = useGraphStore((s) => s.activeExecutionId)
   const toDAGConfig = useGraphStore((s) => s.toDAGConfig)
-  const loadFromDAGConfig = useGraphStore((s) => s.loadFromDAGConfig)
   const clearCanvas = useGraphStore((s) => s.clearCanvas)
   const nodes = useGraphStore((s) => s.nodes)
   const showHistory = useGraphStore((s) => s.showHistory)
   const setShowHistory = useGraphStore((s) => s.setShowHistory)
+  const showLibrary = useGraphStore((s) => s.showLibrary)
+  const setShowLibrary = useGraphStore((s) => s.setShowLibrary)
 
-  const [error, setError] = useState<string | null>(null)
-  const [dags, setDags] = useState<DAGConfig[]>([])
-  const [selectedLoadId, setSelectedLoadId] = useState<string>('')
+  const { theme, toggleTheme } = useTheme()
+  const { pollingError } = useExecutionPoller()
+  const { handleSave, saveLoadError } = useDAGPersistence()
 
-  const refreshDAGs = useCallback(async () => {
-    try {
-      const list = await listDAGs()
-      setDags(list)
-    } catch {
-      // ignore
-    }
-  }, [])
+  const [runError, setRunError] = useState<string | null>(null)
 
-  useEffect(() => {
-    void refreshDAGs()
-  }, [refreshDAGs])
+  const error = runError ?? pollingError ?? saveLoadError
 
-  useEffect(() => {
-    if (!activeExecutionId || !isRunning) return
-
-    let stopped = false
-    const interval = window.setInterval(async () => {
-      if (stopped) return
-      try {
-        const snapshot = await getExecutionNodes(activeExecutionId)
-        setExecutionResult(snapshot)
-        if (snapshot.status === 'completed' || snapshot.status === 'failed' || snapshot.status === 'timeout') {
-          setIsRunning(false)
-          setActiveExecutionId(null)
-        }
-      } catch (e) {
-        // Keep polling; surface a lightweight error.
-        const msg = e instanceof Error ? e.message : 'Polling failed'
-        setError(msg)
-      }
-    }, 500)
-
-    return () => {
-      stopped = true
-      window.clearInterval(interval)
-    }
-  }, [activeExecutionId, isRunning, setExecutionResult, setIsRunning, setActiveExecutionId])
-
-  const handleRun = useCallback(async () => {
+  const handleRun = async () => {
     const dag = toDAGConfig()
     if (dag.nodes.length === 0) {
-      setError('Add at least one node before running')
-      setTimeout(() => setError(null), 3000)
+      setRunError('Add at least one node before running')
+      setTimeout(() => setRunError(null), 3000)
       return
     }
 
     setIsRunning(true)
-    setError(null)
+    setRunError(null)
     setExecutionResult(null)
     setActiveExecutionId(null)
 
     try {
       const start = await runWorkflow(dag)
       setActiveExecutionId(start.execution_id)
-      // Populate initial snapshot quickly
       const snapshot = await getExecutionNodes(start.execution_id)
       setExecutionResult(snapshot)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Execution failed'
-      setError(msg)
-      setTimeout(() => setError(null), 5000)
+      setRunError(msg)
+      setTimeout(() => setRunError(null), 5000)
       setIsRunning(false)
       setActiveExecutionId(null)
     }
-  }, [toDAGConfig, setIsRunning, setExecutionResult, setError, setActiveExecutionId])
+  }
 
-  const handleSave = useCallback(async () => {
-    const dag = toDAGConfig()
-    if (dag.nodes.length === 0) {
-      setError('Nothing to save (add nodes first)')
-      setTimeout(() => setError(null), 3000)
-      return
-    }
-
-    try {
-      if (workflowId) {
-        const updated = await updateDAG(workflowId, dag)
-        loadFromDAGConfig(updated)
-      } else {
-        const created = await createDAG(dag)
-        loadFromDAGConfig(created)
-        setWorkflowId(created.id ?? null)
-      }
-      await refreshDAGs()
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Save failed'
-      setError(msg)
-      setTimeout(() => setError(null), 5000)
-    }
-  }, [toDAGConfig, workflowId, loadFromDAGConfig, refreshDAGs, setWorkflowId])
-
-  const handleLoad = useCallback(async () => {
-    if (!selectedLoadId) return
-    try {
-      const dag = await getDAG(selectedLoadId)
-      loadFromDAGConfig(dag)
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Load failed'
-      setError(msg)
-      setTimeout(() => setError(null), 5000)
-    }
-  }, [selectedLoadId, loadFromDAGConfig])
+  const isReview = appMode === 'REVIEW'
 
   return (
-    <div className="h-12 bg-white border-b border-gray-200 flex items-center px-4 gap-4 shrink-0">
+    <div className="h-12 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 flex items-center px-4 gap-4 shrink-0">
       {/* Logo / Title */}
       <div className="flex items-center gap-2">
-        <span className="text-lg font-bold text-gray-800">Synapse</span>
-        <span className="text-xs text-gray-400">v0.1.0</span>
+        <span className="text-lg font-bold text-gray-800 dark:text-gray-100">Synapse</span>
+        <span className="text-xs text-gray-400 dark:text-gray-500">v0.1.0</span>
       </div>
 
-      {/* Workflow name */}
-      <input
-        type="text"
-        value={workflowName}
-        onChange={(e) => setWorkflowName(e.target.value)}
-        className="ml-4 px-2 py-1 text-sm border border-transparent rounded
-                   hover:border-gray-300 focus:border-blue-400 focus:outline-none
-                   focus:ring-1 focus:ring-blue-400 transition-colors w-56"
-      />
+      {/* Workflow name — BUILDER only */}
+      {!isReview && (
+        <input
+          type="text"
+          value={workflowName}
+          onChange={(e) => setWorkflowName(e.target.value)}
+          className="ml-4 px-2 py-1 text-sm border border-transparent rounded
+                     hover:border-gray-300 dark:hover:border-gray-600
+                     focus:border-blue-400 focus:outline-none
+                     focus:ring-1 focus:ring-blue-400 transition-colors w-56
+                     bg-transparent dark:text-gray-200"
+        />
+      )}
 
-      {/* Spacer */}
-      <div className="flex-1" />
+      {/* Review mode: active execution badge */}
+      {isReview && activeExecutionId && (
+        <span className="ml-4 px-2 py-1 text-xs font-mono bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-300 rounded">
+          Reviewing: {activeExecutionId.slice(0, 8)}
+        </span>
+      )}
+
+      {/* Mode toggle (centred) */}
+      <div className="flex-1 flex justify-center">
+        <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-lg border border-gray-200 dark:border-gray-700">
+          <button
+            onClick={() => {
+              if (isReview) exitReviewMode()
+              else setAppMode('BUILDER')
+            }}
+            className={`px-4 py-1 text-sm font-medium rounded-md transition-colors ${
+              !isReview
+                ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+            }`}
+          >
+            SOP Builder
+          </button>
+          <button
+            onClick={() => setAppMode('REVIEW')}
+            className={`px-4 py-1 text-sm font-medium rounded-md transition-colors ${
+              isReview
+                ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+            }`}
+          >
+            Execution Review
+          </button>
+        </div>
+      </div>
 
       {/* Error message */}
       {error && (
@@ -159,82 +136,96 @@ export function Toolbar() {
         </span>
       )}
 
-      {/* Node count */}
-      <span className="text-xs text-gray-400">
-        {nodes.length} node{nodes.length !== 1 ? 's' : ''}
-      </span>
+      {/* ---- BUILDER-only controls ---- */}
+      {!isReview && (
+        <>
+          {/* Node count */}
+          <span className="text-xs text-gray-400 dark:text-gray-500">
+            {nodes.length} node{nodes.length !== 1 ? 's' : ''}
+          </span>
 
-      {/* Save / Load */}
-      <button
-        onClick={handleSave}
-        disabled={isRunning || nodes.length === 0}
-        className="px-3 py-1 text-sm text-gray-600 border border-gray-300 rounded-md
-                   hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed
-                   transition-colors"
-      >
-        Save
-      </button>
+          {/* Save */}
+          <button
+            onClick={() => void handleSave()}
+            disabled={isRunning || nodes.length === 0}
+            className="px-3 py-1 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-md
+                       hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed
+                       transition-colors"
+          >
+            Save
+          </button>
 
-      <select
-        value={selectedLoadId}
-        onChange={(e) => setSelectedLoadId(e.target.value)}
-        disabled={isRunning || dags.length === 0}
-        className="px-2 py-1 text-sm border border-gray-300 rounded-md bg-white
-                   disabled:opacity-40 disabled:cursor-not-allowed"
-      >
-        <option value="">Load DAG...</option>
-        {dags.map((d) => (
-          <option key={d.id} value={d.id}>
-            {d.name} ({d.id})
-          </option>
-        ))}
-      </select>
-      <button
-        onClick={handleLoad}
-        disabled={isRunning || !selectedLoadId}
-        className="px-3 py-1 text-sm text-gray-600 border border-gray-300 rounded-md
-                   hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed
-                   transition-colors"
-      >
-        Load
-      </button>
+          {/* Library toggle */}
+          <button
+            onClick={() => setShowLibrary(!showLibrary)}
+            className={`px-3 py-1 text-sm border rounded-md transition-colors
+              ${showLibrary
+                ? 'bg-gray-800 text-white border-gray-800 dark:bg-gray-600 dark:border-gray-600'
+                : 'text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800'
+              }`}
+          >
+            Library
+          </button>
 
-      {/* Clear button */}
-      <button
-        onClick={clearCanvas}
-        disabled={isRunning || nodes.length === 0}
-        className="px-3 py-1 text-sm text-gray-600 border border-gray-300 rounded-md
-                   hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed
-                   transition-colors"
-      >
-        Clear
-      </button>
+          {/* Clear */}
+          <button
+            onClick={clearCanvas}
+            disabled={isRunning || nodes.length === 0}
+            className="px-3 py-1 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-md
+                       hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed
+                       transition-colors"
+          >
+            Clear
+          </button>
 
-      {/* History toggle */}
-      <button
-        onClick={() => setShowHistory(!showHistory)}
-        className={`px-3 py-1 text-sm border rounded-md transition-colors
-          ${showHistory
-            ? 'bg-gray-800 text-white border-gray-800'
-            : 'text-gray-600 border-gray-300 hover:bg-gray-50'
-          }`}
-      >
-        History
-      </button>
+          {/* History toggle */}
+          <button
+            onClick={() => setShowHistory(!showHistory)}
+            className={`px-3 py-1 text-sm border rounded-md transition-colors
+              ${showHistory
+                ? 'bg-gray-800 text-white border-gray-800 dark:bg-gray-600 dark:border-gray-600'
+                : 'text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800'
+              }`}
+          >
+            History
+          </button>
 
-      {/* Run button */}
+          {/* Run */}
+          <button
+            onClick={() => void handleRun()}
+            disabled={isRunning || nodes.length === 0}
+            className={`
+              px-4 py-1 text-sm font-medium rounded-md transition-colors
+              ${isRunning
+                ? 'bg-gray-400 text-white cursor-wait'
+                : 'bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed'
+              }
+            `}
+          >
+            {isRunning ? 'Running...' : 'Run'}
+          </button>
+        </>
+      )}
+
+      {/* ---- REVIEW-only controls ---- */}
+      {isReview && (
+        <button
+          onClick={exitReviewMode}
+          className="px-3 py-1 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-md
+                     hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+        >
+          ← Back to Builder
+        </button>
+      )}
+
+      {/* Theme toggle */}
       <button
-        onClick={handleRun}
-        disabled={isRunning || nodes.length === 0}
-        className={`
-          px-4 py-1 text-sm font-medium rounded-md transition-colors
-          ${isRunning
-            ? 'bg-gray-400 text-white cursor-wait'
-            : 'bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed'
-          }
-        `}
+        onClick={toggleTheme}
+        title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+        className="w-8 h-8 flex items-center justify-center rounded-md text-gray-500 dark:text-gray-400
+                   hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-base"
       >
-        {isRunning ? 'Running...' : 'Run'}
+        {theme === 'dark' ? '☀' : '🌙'}
       </button>
     </div>
   )

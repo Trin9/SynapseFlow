@@ -124,7 +124,15 @@ func (e *LLMExecutor) Execute(ctx context.Context, node models.Node, state *mode
 				verdict := buildVerdictFromLLMOutput(resp.Content)
 				_ = e.Writer.WriteVerdict(ctx, episodeID, node.ID, verdict)
 			} else {
-				_ = e.Writer.AppendFact(ctx, episodeID, node.ID, node.Type, node.Name, resp.Content)
+				rawCmd := userPrompt
+				if len(rawCmd) > 300 {
+					rawCmd = rawCmd[:300] + "…"
+				}
+				spec := &models.EvidenceCollectorSpec{
+					CollectorType: "llm_query",
+					RawCommand:    rawCmd,
+				}
+				_ = e.Writer.AppendFactWithSpec(ctx, episodeID, node.ID, node.Type, node.Name, resp.Content, spec)
 			}
 		}
 	}
@@ -143,8 +151,10 @@ func (e *LLMExecutor) Execute(ctx context.Context, node models.Node, state *mode
 // ---------------------------------------------------------------------------
 
 // MockLLMExecutor simulates an LLM response for testing/development.
+// Set Responses[nodeID] to override the generic mock for a specific node.
 type MockLLMExecutor struct {
-	Writer *EpisodeWriter // optional; nil = no Episode tracking
+	Writer    *EpisodeWriter    // optional; nil = no Episode tracking
+	Responses map[string]string // optional per-node response overrides (keyed by node.ID)
 }
 
 func (e *MockLLMExecutor) Execute(ctx context.Context, node models.Node, state *models.GlobalState) models.NodeResult {
@@ -165,13 +175,20 @@ func (e *MockLLMExecutor) Execute(ctx context.Context, node models.Node, state *
 		userPrompt = strings.TrimSpace(userPrompt + "\n\nHistorical context:\n" + historicalContext)
 	}
 
-	mockResponse := fmt.Sprintf(`{
+	// Use a per-node override if provided, otherwise use the generic mock.
+	mockResponse := ""
+	if e.Responses != nil {
+		mockResponse = e.Responses[node.ID]
+	}
+	if mockResponse == "" {
+		mockResponse = fmt.Sprintf(`{
   "root_cause": "Mock analysis based on provided data",
   "severity": "medium",
   "confidence": 75,
   "explanation": "This is a mock LLM response. In production, the LLM would analyze the collected facts and provide real root cause analysis. Input data length: %d chars",
   "recommended_action": "Configure LLM_API_KEY to enable real LLM analysis"
 }`, len(userPrompt))
+	}
 
 	result := models.NodeResult{
 		NodeID:   node.ID,
@@ -196,7 +213,15 @@ func (e *MockLLMExecutor) Execute(ctx context.Context, node models.Node, state *
 				verdict := buildVerdictFromLLMOutput(mockResponse)
 				_ = e.Writer.WriteVerdict(ctx, episodeID, node.ID, verdict)
 			} else {
-				_ = e.Writer.AppendFact(ctx, episodeID, node.ID, node.Type, node.Name, mockResponse)
+				rawCmd := userPrompt
+				if len(rawCmd) > 300 {
+					rawCmd = rawCmd[:300] + "…"
+				}
+				spec := &models.EvidenceCollectorSpec{
+					CollectorType: "llm_query",
+					RawCommand:    rawCmd,
+				}
+				_ = e.Writer.AppendFactWithSpec(ctx, episodeID, node.ID, node.Type, node.Name, mockResponse, spec)
 			}
 		}
 	}
@@ -299,10 +324,23 @@ func validateStructuredKeys(config map[string]interface{}, parsed map[string]int
 // buildVerdictFromLLMOutput parses a JSON LLM response and extracts the fields
 // required to populate an EpisodeVerdict.  Best-effort: unknown shapes fall
 // back to a plain-text conclusion.
+//
+// Confidence handling:
+//   - String values "high"/"medium"/"low" are used directly.
+//   - Float values (0–100 scale) are mapped: ≥80→high, ≥50→medium, else→low.
+//
+// Result derivation:
+//   - business_success == true  → pass
+//   - business_success == false → fail
+//   - key absent                → inconclusive
 func buildVerdictFromLLMOutput(content string) models.EpisodeVerdict {
 	var parsed map[string]interface{}
 	if err := json.Unmarshal([]byte(content), &parsed); err != nil {
-		return models.EpisodeVerdict{Conclusion: content}
+		return models.EpisodeVerdict{
+			Conclusion: content,
+			Result:     models.EpisodeResultInconclusive,
+			Confidence: models.EpisodeConfidenceLow,
+		}
 	}
 
 	verdict := models.EpisodeVerdict{}
@@ -315,25 +353,66 @@ func buildVerdictFromLLMOutput(content string) models.EpisodeVerdict {
 		}
 	}
 
-	// Confidence: normalise to 0-1 range (LLMs often emit 0-100)
-	if v, ok := parsed["confidence"].(float64); ok {
-		if v > 1.0 {
-			verdict.Confidence = v / 100.0
-		} else {
-			verdict.Confidence = v
+	// Confidence: accept string label or float.
+	switch cv := parsed["confidence"].(type) {
+	case string:
+		switch strings.ToLower(cv) {
+		case "high":
+			verdict.Confidence = models.EpisodeConfidenceHigh
+		case "medium":
+			verdict.Confidence = models.EpisodeConfidenceMedium
+		default:
+			verdict.Confidence = models.EpisodeConfidenceLow
 		}
+	case float64:
+		switch {
+		case cv >= 80:
+			verdict.Confidence = models.EpisodeConfidenceHigh
+		case cv >= 50:
+			verdict.Confidence = models.EpisodeConfidenceMedium
+		default:
+			verdict.Confidence = models.EpisodeConfidenceLow
+		}
+	default:
+		verdict.Confidence = models.EpisodeConfidenceLow
 	}
 
-	// CausalChain: root_cause as first entry when it differs from conclusion
+	// Result: derived from business_success flag when present.
+	if bs, ok := parsed["business_success"]; ok {
+		switch v := bs.(type) {
+		case bool:
+			if v {
+				verdict.Result = models.EpisodeResultPass
+			} else {
+				verdict.Result = models.EpisodeResultFail
+			}
+		}
+	} else {
+		verdict.Result = models.EpisodeResultInconclusive
+	}
+
+	// CausalChain: root_cause as first entry when it differs from conclusion.
 	if rc, ok := parsed["root_cause"].(string); ok && rc != "" && rc != verdict.Conclusion {
 		verdict.CausalChain = []string{rc}
 	}
 
-	// Gaps from missing_info array
+	// Gaps from missing_info array.
 	if mi, ok := parsed["missing_info"].([]interface{}); ok {
 		for _, item := range mi {
 			if s, ok := item.(string); ok && s != "" {
 				verdict.Gaps = append(verdict.Gaps, s)
+			}
+		}
+	}
+
+	// Recommendations from recommended_action string or recommendations array.
+	if ra, ok := parsed["recommended_action"].(string); ok && strings.TrimSpace(ra) != "" {
+		verdict.Recommendations = []string{ra}
+	}
+	if recs, ok := parsed["recommendations"].([]interface{}); ok {
+		for _, item := range recs {
+			if s, ok := item.(string); ok && s != "" {
+				verdict.Recommendations = append(verdict.Recommendations, s)
 			}
 		}
 	}

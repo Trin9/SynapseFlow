@@ -24,11 +24,11 @@ export function ResultsPanel() {
   if (!executionResult) return null
 
   return (
-    <div className="border-t border-gray-200 bg-white max-h-72 overflow-y-auto shrink-0">
+    <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 max-h-72 overflow-y-auto shrink-0">
       {/* Header */}
-      <div className="px-4 py-2 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white">
+      <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between sticky top-0 bg-white dark:bg-gray-900">
         <div className="flex items-center gap-3">
-          <span className="text-sm font-semibold text-gray-700">
+          <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
             Execution Results
           </span>
           <span
@@ -42,7 +42,7 @@ export function ResultsPanel() {
           >
             {executionResult.status}
           </span>
-          <span className="text-xs text-gray-400">
+          <span className="text-xs text-gray-400 dark:text-gray-500">
             {typeof executionResult.duration_ms === 'number' ? `${executionResult.duration_ms}ms` : ''}
           </span>
         </div>
@@ -52,14 +52,14 @@ export function ResultsPanel() {
             setActiveExecutionId(null)
             setIsRunning(false)
           }}
-          className="text-gray-400 hover:text-gray-600 text-sm"
+          className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 text-sm"
         >
           Close
         </button>
       </div>
 
       {/* Node results */}
-      <div className="divide-y divide-gray-100">
+      <div className="divide-y divide-gray-100 dark:divide-gray-800">
         {(executionResult.results ?? []).map((result) => {
           const info = NODE_TYPE_INFO[result.node_type]
           return (
@@ -79,18 +79,18 @@ export function ResultsPanel() {
                     <span className={`text-[10px] font-bold uppercase ${info?.color ?? 'text-gray-600'}`}>
                       {result.node_type}
                     </span>
-                    <span className="text-sm font-medium text-gray-700">
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
                       {result.node_name}
                     </span>
-                    <span className="text-xs text-gray-400 ml-auto">
+                    <span className="text-xs text-gray-400 dark:text-gray-500 ml-auto">
                       {result.duration_ms}ms
                     </span>
-                    <span className="text-xs text-gray-400 group-open:rotate-90 transition-transform">›</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-500 group-open:rotate-90 transition-transform">›</span>
                   </div>
                 </summary>
 
                 {result.output && (
-                  <pre className="text-xs text-gray-700 bg-gray-50 rounded p-2 mt-2 overflow-x-auto font-mono whitespace-pre">
+                  <pre className="text-xs text-gray-700 dark:text-gray-200 bg-gray-50 dark:bg-gray-800 rounded p-2 mt-2 overflow-x-auto font-mono whitespace-pre">
                     {formatMaybeJSON(result.output)}
                   </pre>
                 )}

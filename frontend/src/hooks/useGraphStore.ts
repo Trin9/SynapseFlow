@@ -9,13 +9,89 @@ import {
   applyEdgeChanges,
   addEdge,
 } from '@xyflow/react'
-import type { NodeType, DAGConfig, WorkflowNode, WorkflowEdge, ExecutionNodesResponse } from '@/types'
+import type { NodeType, AnyNodeType, DAGConfig, WorkflowNode, WorkflowEdge, ExecutionNodesResponse } from '@/types'
 import type { FlowNodeData } from '@/components/nodes/CustomNodes'
+import type { Episode } from '@/types/episode'
+
+// ---------------------------------------------------------------------------
+// DAG layout: BFS-based level assignment, horizontal layout (left → right)
+// Handles fan-out/fan-in correctly by assigning the maximum depth per node.
+// ---------------------------------------------------------------------------
+function computeDAGLayout(
+  nodes: FlowNode[],
+  dagEdges: WorkflowEdge[],
+): FlowNode[] {
+  const LEVEL_WIDTH = 270   // horizontal spacing between levels
+  const NODE_HEIGHT = 120   // vertical spacing between nodes in the same level
+  const START_X = 80
+  const CENTER_Y = 320
+
+  // Build adjacency maps
+  const inDegree: Record<string, string[]> = {}
+  const outEdgesMap: Record<string, string[]> = {}
+  for (const n of nodes) {
+    inDegree[n.id] = []
+    outEdgesMap[n.id] = []
+  }
+  for (const e of dagEdges) {
+    if (outEdgesMap[e.from] !== undefined) outEdgesMap[e.from].push(e.to)
+    if (inDegree[e.to] !== undefined) inDegree[e.to].push(e.from)
+  }
+
+  // Assign levels: use longest-path (critical path) depth via BFS/relaxation
+  const levels: Record<string, number> = {}
+  for (const n of nodes) levels[n.id] = 0
+
+  // Topological relaxation — iterate until stable (handles any DAG depth)
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const e of dagEdges) {
+      const newLevel = (levels[e.from] ?? 0) + 1
+      if ((levels[e.to] ?? 0) < newLevel) {
+        levels[e.to] = newLevel
+        changed = true
+      }
+    }
+  }
+
+  // Group nodes by level
+  const levelGroups: Record<number, string[]> = {}
+  for (const n of nodes) {
+    const l = levels[n.id] ?? 0
+    if (!levelGroups[l]) levelGroups[l] = []
+    levelGroups[l].push(n.id)
+  }
+
+  // Assign positions: levels left→right, nodes within a level centered vertically
+  const posMap: Record<string, { x: number; y: number }> = {}
+  for (const [levelStr, nodeIds] of Object.entries(levelGroups)) {
+    const level = Number(levelStr)
+    const x = START_X + level * LEVEL_WIDTH
+    nodeIds.forEach((id, i) => {
+      const totalHeight = (nodeIds.length - 1) * NODE_HEIGHT
+      const y = CENTER_Y - totalHeight / 2 + i * NODE_HEIGHT
+      posMap[id] = { x, y }
+    })
+  }
+
+  return nodes.map((n) => ({ ...n, position: posMap[n.id] ?? n.position }))
+}
 
 export type FlowNode = Node<FlowNodeData>
 export type FlowEdge = Edge
 
+export type AppMode = 'BUILDER' | 'REVIEW'
+
 interface GraphState {
+  // Mode toggle
+  appMode: AppMode
+  setAppMode: (mode: AppMode) => void
+  /** Switch to REVIEW mode and set the execution being reviewed. */
+  enterReviewMode: (executionId: string) => void
+  /** Return to BUILDER mode, clearing any review-specific state. */
+  exitReviewMode: () => void
+
   // React Flow state
   nodes: FlowNode[]
   edges: FlowEdge[]
@@ -28,7 +104,7 @@ interface GraphState {
   setSelectedNodeId: (id: string | null) => void
 
   // Node operations
-  addNode: (type: NodeType, position: { x: number; y: number }) => void
+  addNode: (type: AnyNodeType, position: { x: number; y: number }) => void
   updateNodeData: (nodeId: string, data: Partial<FlowNodeData>) => void
   deleteNode: (nodeId: string) => void
 
@@ -51,6 +127,24 @@ interface GraphState {
   showHistory: boolean
   setShowHistory: (show: boolean) => void
 
+  // Library panel
+  showLibrary: boolean
+  setShowLibrary: (show: boolean) => void
+
+  // Episode detail overlay (Scope 3)
+  selectedEpisode: Episode | null
+  setSelectedEpisode: (ep: Episode | null) => void
+
+  // M3.4 — replay position (0–100)
+  replayPercent: number
+  setReplayPercent: (n: number) => void
+
+  // SuperNode drilldown view level
+  viewLevel: 'overview' | 'drilldown'
+  activeSuperNodeId: string | null
+  enterDrilldown: (nodeId: string) => void
+  exitDrilldown: () => void
+
   // Serialization
   toDAGConfig: () => DAGConfig
   loadFromDAGConfig: (dag: DAGConfig) => void
@@ -67,6 +161,37 @@ function generateNodeId(): string {
 }
 
 export const useGraphStore = create<GraphState>((set, get) => ({
+  appMode: 'BUILDER',
+  setAppMode: (mode) => set({ appMode: mode }),
+
+  enterReviewMode: (executionId) => {
+    set({
+      appMode: 'REVIEW',
+      activeExecutionId: executionId,
+      // Reset any in-progress run state so the canvas shows review colours cleanly.
+      isRunning: false,
+      // CR-016: open history panel and collapse library; clear any leftover node selection.
+      showHistory: true,
+      showLibrary: false,
+      selectedNodeId: null,
+    })
+  },
+
+  exitReviewMode: () => {
+    set({
+      appMode: 'BUILDER',
+      activeExecutionId: null,
+      executionResult: null,
+      nodeStatuses: {},
+      isRunning: false,
+      // CR-016: clear review-specific overlay state so the canvas is truly reset.
+      selectedEpisode: null,
+      replayPercent: 100,
+      viewLevel: 'overview',
+      activeSuperNodeId: null,
+    })
+  },
+
   nodes: [],
   edges: [],
 
@@ -87,23 +212,25 @@ export const useGraphStore = create<GraphState>((set, get) => ({
 
   addNode: (type, position) => {
     const id = generateNodeId()
-    const defaultLabels: Record<NodeType, string> = {
+    const defaultLabels: Record<AnyNodeType, string> = {
       script: 'Script Node',
       llm: 'LLM Analysis',
       mcp: 'MCP Tool',
       human: 'Manual Review',
       router: 'Router',
+      super: 'Super Group',
     }
 
     const newNode: FlowNode = {
       id,
-      type: `${type}Node`,
+      type: type === 'super' ? 'superNode' : `${type}Node`,
       position,
       data: {
         label: defaultLabels[type],
         nodeType: type,
         action: '',
         config: {},
+        ...(type === 'super' ? { childNodeIds: [] } : {}),
       },
     }
 
@@ -152,6 +279,20 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   showHistory: false,
   setShowHistory: (show) => set({ showHistory: show }),
 
+  showLibrary: false,
+  setShowLibrary: (show) => set({ showLibrary: show }),
+
+  selectedEpisode: null,
+  setSelectedEpisode: (ep) => set({ selectedEpisode: ep }),
+
+  replayPercent: 100,
+  setReplayPercent: (n) => set({ replayPercent: n }),
+
+  viewLevel: 'overview',
+  activeSuperNodeId: null,
+  enterDrilldown: (nodeId) => set({ viewLevel: 'drilldown', activeSuperNodeId: nodeId }),
+  exitDrilldown: () => set({ viewLevel: 'overview', activeSuperNodeId: null }),
+
   setExecutionResult: (result) => {
     if (!result) {
       // Reset to idle
@@ -172,18 +313,23 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   toDAGConfig: () => {
     const { nodes, edges, workflowName, workflowId } = get()
 
-    const workflowNodes: WorkflowNode[] = nodes.map((node) => ({
-      id: node.id,
-      name: node.data.label,
-      type: node.data.nodeType,
-      action: node.data.action,
-      config: node.data.config,
-    }))
+    // Super nodes are canvas-only grouping constructs — never sent to the backend.
+    const workflowNodes: WorkflowNode[] = nodes
+      .filter((node) => node.data.nodeType !== 'super')
+      .map((node) => ({
+        id: node.id,
+        name: node.data.label,
+        type: node.data.nodeType as NodeType,
+        action: node.data.action,
+        config: node.data.config,
+      }))
 
-    const workflowEdges: WorkflowEdge[] = edges.map((edge) => ({
-      from: edge.source,
-      to: edge.target,
-    }))
+    const workflowEdges: WorkflowEdge[] = edges.map((edge) => {
+      const condition = edge.data?.condition as string | undefined
+      const entry: WorkflowEdge = { from: edge.source, to: edge.target }
+      if (condition) entry.condition = condition
+      return entry
+    })
 
     return {
       id: workflowId ?? undefined,
@@ -194,10 +340,10 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   },
 
   loadFromDAGConfig: (dag) => {
-    const nodes: FlowNode[] = (dag.nodes ?? []).map((n, idx) => ({
+    const rawNodes: FlowNode[] = (dag.nodes ?? []).map((n, idx) => ({
       id: n.id,
       type: `${n.type}Node`,
-      position: { x: 80, y: 80 + idx * 110 },
+      position: { x: 80, y: 80 + idx * 110 },  // overwritten by computeDAGLayout below
       data: {
         label: n.name,
         nodeType: n.type,
@@ -206,11 +352,18 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       },
     }))
 
-    const edges: FlowEdge[] = (dag.edges ?? []).map((e) => ({
+    const dagEdges = dag.edges ?? []
+
+    const edges: FlowEdge[] = dagEdges.map((e) => ({
       id: `e_${e.from}_${e.to}`,
       source: e.from,
       target: e.to,
+      type: e.condition ? 'labeled' : undefined,
+      data: e.condition ? { condition: e.condition } : undefined,
     }))
+
+    // Apply BFS-based layout so fan-out nodes don't overlap
+    const nodes = computeDAGLayout(rawNodes, dagEdges)
 
     set({
       nodes,
@@ -235,6 +388,8 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       activeExecutionId: null,
       workflowId: null,
       nodeStatuses: {},
+      viewLevel: 'overview',
+      activeSuperNodeId: null,
     })
     nodeIdCounter = 0
   },
