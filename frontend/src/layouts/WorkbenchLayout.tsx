@@ -1,11 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, BookOpen, History, AlignLeft } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import { Canvas } from '@/components/Canvas'
 import { Sidebar } from '@/components/Sidebar'
 import { ConfigPanel } from '@/components/ConfigPanel'
 import { ExecutionHistory } from '@/components/ExecutionHistory'
 import { WorkflowLibrary } from '@/components/library/WorkflowLibrary'
+import { listExecutionSummaries, listExecutionSummariesByDAG } from '@/api/episodes'
 import { useGraphStore } from '@/hooks/useGraphStore'
 import { EpisodeOverviewStrip } from '@/components/execution/EpisodeOverviewCard'
 import { TriggerContextPanel } from '@/components/execution/TriggerContextPanel'
@@ -21,11 +23,30 @@ export function WorkbenchLayout() {
   const setShowHistory = useGraphStore((s) => s.setShowHistory)
   const showLibrary = useGraphStore((s) => s.showLibrary)
   const setShowLibrary = useGraphStore((s) => s.setShowLibrary)
+  const setActiveExecutionId = useGraphStore((s) => s.setActiveExecutionId)
+  const useWorkbenchLayout = useGraphStore((s) => s.useWorkbenchLayout)
 
   const [showTriggerCtx, setShowTriggerCtx] = useState(true)
 
   const isReview = appMode === 'REVIEW'
   const showRightHistory = isReview || showHistory
+
+  const { data: bootstrapExecutions = [] } = useQuery({
+    queryKey: ['review-bootstrap-executions'],
+    enabled: useWorkbenchLayout && isReview && !activeExecutionId,
+    queryFn: async () => {
+      const preferred = await listExecutionSummariesByDAG('boutique_checkout_consistency_audit')
+      if (preferred.length > 0) return preferred
+      return listExecutionSummaries()
+    },
+  })
+
+  useEffect(() => {
+    if (!useWorkbenchLayout || !isReview || activeExecutionId) return
+    const first = bootstrapExecutions[0]
+    if (!first) return
+    setActiveExecutionId(first.execution_id)
+  }, [activeExecutionId, bootstrapExecutions, isReview, setActiveExecutionId, useWorkbenchLayout])
 
   return (
     <div className="flex-1 min-h-0 flex flex-col bg-background">
