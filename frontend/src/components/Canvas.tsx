@@ -198,8 +198,9 @@ export function Canvas() {
         </div>
       )}
 
-      <div className="flex-1">
+      <div className="flex-1 bg-[#0a0e17]">
         <ReactFlow<FlowNode, FlowEdge>
+          className="bg-[#0a0e17]"
           nodes={visibleNodes}
           edges={visibleEdges}
           onNodesChange={isReview ? undefined : onNodesChange}
@@ -225,13 +226,13 @@ export function Canvas() {
           }}
           proOptions={{ hideAttribution: true }}
         >
-          <Background gap={15} size={1} />
+          <Background gap={16} size={1} color="rgba(56, 189, 248, 0.15)" />
           <Controls showInteractive={false} />
           <MiniMap
             nodeStrokeWidth={3}
             pannable
             zoomable
-            className="!bg-gray-100 dark:!bg-gray-800 !border-gray-200 dark:!border-gray-700"
+            className="!bg-[#0f172a]/95 !border-[#1e293b]"
           />
           {useEpisodeRendererSwap && episodesLoading && (
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
