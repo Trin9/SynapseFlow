@@ -1,7 +1,10 @@
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
+import { Layers, ScrollText } from 'lucide-react'
 import { NODE_TYPE_INFO, type NodeType, type AnyNodeType } from '@/types'
 import { useGraphStore } from '@/hooks/useGraphStore'
+import { getEpisode } from '@/api/episodes'
+import { cn } from '@/lib/utils'
 
 // Data shape stored on each flow node
 export interface FlowNodeData extends Record<string, unknown> {
@@ -175,6 +178,166 @@ function SuperNodeBase({ data, selected, id }: NodeProps<FlowNode>) {
   )
 }
 
+// ─── Review Episode Overview Node (Spike) ───────────────────────────────
+
+function verdictTone(verdict?: string): string {
+  switch (verdict) {
+    case 'pass': return 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
+    case 'fail': return 'border-red-500/40 bg-red-500/10 text-red-400'
+    case 'inconclusive': return 'border-amber-500/40 bg-amber-500/10 text-amber-400'
+    default: return 'border-zinc-700 bg-zinc-800 text-zinc-400'
+  }
+}
+
+function statusBorderColor(status?: string): string {
+  switch (status) {
+    case 'completed': return 'border-emerald-500/30'
+    case 'running': return 'border-amber-500/50'
+    case 'failed': return 'border-red-500/30'
+    default: return 'border-zinc-700/50'
+  }
+}
+
+function childDotColor(type?: string): string {
+  switch (type) {
+    case 'script': return 'bg-blue-500'
+    case 'llm': return 'bg-purple-500'
+    case 'mcp': case 'mcp-tool': return 'bg-emerald-500'
+    case 'human': return 'bg-amber-500'
+    default: return 'bg-cyan-500'
+  }
+}
+
+function EpisodeOverviewNodeBase({ data, selected }: NodeProps<FlowNode>) {
+  const setSelectedEpisode = useGraphStore((s) => s.setSelectedEpisode)
+  const [showPreview, setShowPreview] = useState(false)
+
+  const verdict = typeof data.config?.verdict === 'string' ? data.config.verdict : undefined
+  const verdictLabel =
+    typeof data.config?.verdict_label === 'string'
+      ? data.config.verdict_label
+      : verdict ?? 'open'
+  const status = typeof data.config?.status === 'string' ? data.config.status : 'unknown'
+  const evidenceCount = typeof data.config?.evidence_count === 'number' ? data.config.evidence_count : 0
+  const handleCount = typeof data.config?.handle_count === 'number' ? data.config.handle_count : 0
+  const confidence = typeof data.config?.confidence === 'string' ? data.config.confidence : '-'
+  const episodeId = typeof data.config?.episode_id === 'string' ? data.config.episode_id : ''
+  const childPreview = Array.isArray(data.config?.child_preview)
+    ? (data.config.child_preview as Array<{ id?: string; label?: string; type?: string }>).filter(
+        (item) => typeof item?.label === 'string'
+      )
+    : []
+
+  async function openDossier() {
+    if (!episodeId) return
+    const episode = await getEpisode(episodeId)
+    setSelectedEpisode(episode)
+  }
+
+  return (
+    <>
+      <Handle type="target" position={Position.Left} className="!h-3 !w-3 !border-zinc-500 !bg-zinc-600" />
+      <div
+        className={cn(
+          'relative w-[340px] rounded-xl border-2 border-dashed p-4 backdrop-blur-sm transition-all duration-200',
+          'bg-[#0d1117]/90 text-zinc-100',
+          statusBorderColor(status),
+          selected && 'ring-2 ring-cyan-500/50 ring-offset-2 ring-offset-[#0a0e17]',
+          'shadow-lg shadow-cyan-500/5'
+        )}
+      >
+        {/* Header row: title + verdict badge */}
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <Layers className="h-4 w-4 text-cyan-400 shrink-0" />
+              <span className="font-medium text-sm truncate">{data.label}</span>
+            </div>
+            {data.action && (
+              <p className="mt-1 text-xs text-zinc-500 line-clamp-2">{data.action}</p>
+            )}
+          </div>
+          <span className={cn(
+            'shrink-0 text-[10px] font-bold uppercase px-2 py-0.5 rounded border',
+            verdictTone(verdict)
+          )}>
+            {verdictLabel}
+          </span>
+        </div>
+
+        {/* Metrics grid */}
+        <div className="mt-3 grid grid-cols-3 gap-2 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
+          <div className="flex flex-col items-center gap-0.5">
+            <span className="text-[10px] text-zinc-500">Confidence</span>
+            <span className="text-xs font-semibold text-zinc-300 capitalize">{confidence}</span>
+          </div>
+          <div className="flex flex-col items-center gap-0.5">
+            <span className="text-[10px] text-zinc-500">Evidence</span>
+            <span className="text-xs font-semibold text-zinc-300">{evidenceCount}</span>
+          </div>
+          <div className="flex flex-col items-center gap-0.5">
+            <span className="text-[10px] text-zinc-500">Handles</span>
+            <span className="text-xs font-semibold text-zinc-300">{handleCount}</span>
+          </div>
+        </div>
+
+        {/* Child node dot preview */}
+        <div className="relative mt-3 h-16 rounded-lg border border-zinc-800 bg-zinc-900/50">
+          {childPreview.length > 0 ? (
+            <div className="flex h-full items-center justify-center gap-3 px-4">
+              {childPreview.slice(0, 6).map((child, idx) => (
+                <div
+                  key={child.id ?? idx}
+                  className={cn('h-3 w-3 rounded-full', childDotColor(child.type), idx % 2 === 0 && '-translate-y-1')}
+                  title={child.label}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="flex h-full items-center justify-center text-[10px] text-zinc-600">
+              {childPreview.length === 0 ? 'No child preview' : ''}
+            </div>
+          )}
+          <button
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); setShowPreview(v => !v) }}
+            disabled={childPreview.length === 0}
+            className="absolute bottom-1.5 right-1.5 h-6 px-2 text-[11px] font-medium rounded bg-cyan-600 text-zinc-950 hover:bg-cyan-500 disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            View
+          </button>
+        </div>
+
+        {/* Actions row */}
+        <div className="mt-3 flex items-center justify-between gap-2">
+          <span className="text-xs text-zinc-500">{childPreview.length} internal nodes</span>
+          <button
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); void openDossier() }}
+            className="flex items-center gap-1.5 h-7 px-2.5 text-xs font-medium text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/10 rounded transition-colors"
+          >
+            <ScrollText className="h-3 w-3" />
+            Open Dossier
+          </button>
+        </div>
+
+        {/* Expandable child list */}
+        {showPreview && childPreview.length > 0 && (
+          <div className="mt-2 rounded border border-zinc-800 bg-zinc-900/60 px-2 py-1.5 space-y-1">
+            {childPreview.map((item, idx) => (
+              <div key={`${item.id ?? item.label}-${idx}`} className="flex items-center gap-2 text-[11px] text-zinc-400">
+                <div className={cn('h-2 w-2 rounded-full shrink-0', childDotColor(item.type))} />
+                {item.label}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <Handle type="source" position={Position.Right} className="!h-3 !w-3 !border-zinc-500 !bg-zinc-600" />
+    </>
+  )
+}
+
 // Export individual node types for React Flow's nodeTypes registry
 export const ScriptNode = memo(BaseNode)
 export const LLMNode = memo(BaseNode)
@@ -182,6 +345,7 @@ export const MCPNode = memo(BaseNode)
 export const HumanNode = memo(BaseNode)
 export const RouterNode = memo(BaseNode)
 export const SuperNodeComponent = memo(SuperNodeBase)
+export const EpisodeOverviewNode = memo(EpisodeOverviewNodeBase)
 
 // Mapping for React Flow
 export const nodeTypes = {
@@ -191,4 +355,5 @@ export const nodeTypes = {
   humanNode: HumanNode,
   routerNode: RouterNode,
   superNode: SuperNodeComponent,
+  episodeOverviewNode: EpisodeOverviewNode,
 }

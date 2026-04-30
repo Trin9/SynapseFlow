@@ -20,7 +20,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     } catch {
       // ignore localStorage errors in SSR or private browsing
     }
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    return 'dark'
   })
 
   useEffect(() => {

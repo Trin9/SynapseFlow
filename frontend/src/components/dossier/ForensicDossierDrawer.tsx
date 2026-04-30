@@ -5,10 +5,13 @@
 //   M3.2 — human review actions (approve / override / abort) + loading/error
 //   M3.4 — replay percent + replay slice fetch
 //   M4.1 — activeFocusKey for cross-column item linkage (local state)
+//   Phase D — execution breadcrumb, run label, audit badge, Copy JSON
 import { useState, useEffect, useRef } from 'react'
+import { motion } from 'framer-motion'
+import { Copy, GitCompare, X, RotateCcw, CheckCircle2 } from 'lucide-react'
 import { useGraphStore } from '@/hooks/useGraphStore'
-import { getEpisodeDossier, getEpisodeReplay, getEpisode, postReviewAction } from '@/api/episodes'
-import { statusStyle, formatDate } from './_shared'
+import { getEpisodeDossier, getEpisodeReplay, getEpisode, postReviewAction, getExecutionSummaryView } from '@/api/episodes'
+import { formatDate } from './_shared'
 import { ReplaySlider } from './ReplaySlider'
 import { FocusLinkOverlay } from './FocusLinkOverlay'
 import { HumanReviewPanel } from './HumanReviewPanel'
@@ -18,8 +21,12 @@ import { ExpectedBehaviorColumn } from './ExpectedBehaviorColumn'
 import { VerdictBridgeColumn } from './VerdictBridgeColumn'
 import { RuntimeFactsColumn } from './RuntimeFactsColumn'
 import { HistoricalComparisonSheet } from '@/components/execution/HistoricalComparisonSheet'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import type { Episode } from '@/types/episode'
-import type { EpisodeDossierView, ReplaySliceView } from '@/types/workspace'
+import type { EpisodeDossierView, ReplaySliceView, ExecutionSummaryView } from '@/types/workspace'
 
 // ─── Trigger Banner ───────────────────────────────────────────────────────
 
@@ -62,14 +69,14 @@ function TriggerBanner({ ep, banner }: { ep: Episode; banner?: string | null }) 
   if (!badge && !title) return null
 
   return (
-    <div className="bg-gray-800 text-gray-200 px-6 py-3 text-sm flex gap-2 items-center shrink-0 shadow-inner">
+    <div className="bg-zinc-900 text-zinc-200 px-6 py-3 text-sm flex gap-2 items-center shrink-0 border-b border-zinc-800">
       {badge && (
-        <span className="bg-gray-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0">
+        <span className="bg-zinc-700 text-zinc-200 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0">
           {badge}
         </span>
       )}
       {title && <span className="font-semibold text-white">{title}</span>}
-      {subtitle && <span className="text-gray-400 ml-4 font-mono text-xs">{subtitle}</span>}
+      {subtitle && <span className="text-zinc-500 ml-4 font-mono text-xs">{subtitle}</span>}
     </div>
   )
 }
@@ -88,6 +95,7 @@ export function ForensicDossierDrawer() {
   const [dossierError, setDossierError] = useState<string | null>(null)
   const [dossierRefreshKey, setDossierRefreshKey] = useState(0)
   const [replaySlice, setReplaySlice] = useState<ReplaySliceView | null>(null)
+  const [execSummary, setExecSummary] = useState<ExecutionSummaryView | null>(null)
 
   // M3.2 — review action state
   const [reviewLoading, setReviewLoading] = useState(false)
@@ -146,6 +154,16 @@ export function ForensicDossierDrawer() {
       .catch(() => { if (!cancelled) setReplaySlice(null) })
     return () => { cancelled = true }
   }, [selectedEpisode?.id, replayPercent])
+
+  // Phase D — Fetch execution summary for breadcrumb / run label
+  useEffect(() => {
+    if (!selectedEpisode) { setExecSummary(null); return }
+    let cancelled = false
+    getExecutionSummaryView(selectedEpisode.exec_id)
+      .then((s) => { if (!cancelled) setExecSummary(s) })
+      .catch(() => { /* non-blocking — header enrichment only */ })
+    return () => { cancelled = true }
+  }, [selectedEpisode?.exec_id])
 
   // ── Early return ───────────────────────────────────────────────────────
   if (!selectedEpisode) return null
@@ -213,56 +231,118 @@ export function ForensicDossierDrawer() {
     setActiveFocusKey((prev) => (prev === key ? null : key))
   }
 
+  // Phase D — Copy dossier JSON to clipboard
+  const [copyLabel, setCopyLabel] = useState<'Copy JSON' | 'Copied!'>('Copy JSON')
+  function handleCopyJSON() {
+    if (!dossier) return
+    const payload = JSON.stringify({ episode: ep, dossier }, null, 2)
+    navigator.clipboard.writeText(payload).then(() => {
+      setCopyLabel('Copied!')
+      setTimeout(() => setCopyLabel('Copy JSON'), 1800)
+    })
+  }
+
   // ── Render ─────────────────────────────────────────────────────────────
   return (
-    <div className="fixed inset-0 z-50 flex items-stretch bg-gray-900/60 dark:bg-black/70 backdrop-blur-sm p-8">
-      {/* Dossier Container */}
-      <div className="w-full max-w-[1600px] mx-auto h-full bg-gray-100 dark:bg-gray-900 rounded-xl shadow-2xl flex flex-col overflow-hidden border border-gray-300 dark:border-gray-700 relative">
+    <div className="fixed inset-0 z-50 flex items-stretch">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
 
-        {/* Top Bar */}
-        <div className="bg-white dark:bg-gray-900 border-b border-gray-300 dark:border-gray-700 px-6 py-3 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-4 flex-wrap">
-            <span
-              className={`text-xs font-bold px-2.5 py-1 rounded uppercase border shrink-0 tracking-wider ${
-                ep.episode_type === 'action_verification'
-                  ? 'bg-blue-50 text-blue-700 border-blue-200'
-                  : 'bg-violet-50 text-violet-700 border-violet-200'
-              }`}
-            >
-              {ep.episode_type === 'action_verification'
-                ? 'Action Verification'
-                : 'Investigation Step'}
-            </span>
-            <span className="text-sm font-mono text-gray-500 dark:text-gray-400">#{ep.id.slice(0, 8)}</span>
-            <span
-              className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase shrink-0 ${statusStyle(ep.status)}`}
-            >
+      {/* Dossier Container — slides in from right */}
+      <motion.div
+        initial={{ x: '100%' }}
+        animate={{ x: 0 }}
+        exit={{ x: '100%' }}
+        transition={{ type: 'spring', damping: 28, stiffness: 220 }}
+        className="relative ml-auto w-full max-w-[1600px] h-full bg-zinc-950 rounded-l-xl shadow-2xl flex flex-col overflow-hidden border-l border-zinc-800"
+      >
+
+        {/* Top Bar — shadcn Breadcrumb + Badge + Button */}
+        <div className="bg-background border-b px-5 py-2.5 shrink-0">
+          {/* Row 1: Breadcrumb */}
+          <Breadcrumb className="mb-1.5">
+            <BreadcrumbList className="text-[11px]">
+              {execSummary && (
+                <>
+                  <BreadcrumbItem>
+                    <span className="text-muted-foreground font-medium truncate max-w-[140px]">
+                      {execSummary.dag_name}
+                    </span>
+                  </BreadcrumbItem>
+                  <BreadcrumbSeparator />
+                </>
+              )}
+              <BreadcrumbItem>
+                <BreadcrumbPage className="font-medium truncate max-w-[220px]">
+                  {dossier?.episode.label ?? ep.id.slice(0, 8)}
+                </BreadcrumbPage>
+              </BreadcrumbItem>
+              {execSummary?.display.run_label && (
+                <>
+                  <BreadcrumbSeparator>·</BreadcrumbSeparator>
+                  <BreadcrumbItem>
+                    <span className="font-mono text-muted-foreground italic truncate max-w-[120px]">
+                      {execSummary.display.run_label}
+                    </span>
+                  </BreadcrumbItem>
+                </>
+              )}
+            </BreadcrumbList>
+          </Breadcrumb>
+
+          {/* Row 2: Badges + Actions */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge variant={ep.episode_type === 'action_verification' ? 'info' : 'default'} className="text-[10px] uppercase tracking-wider">
+              {ep.episode_type === 'action_verification' ? 'Action' : 'Investigation'}
+            </Badge>
+            <Badge variant="outline" className="text-[10px] uppercase">
               {ep.status}
-            </span>
+            </Badge>
             {dossier && (
-              <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono">
-                {dossier.episode.label}
-              </span>
+              <Badge variant="ghost" className="text-[10px] font-mono gap-1">
+                <RotateCcw className="w-2.5 h-2.5" />
+                {replayPercent}%
+              </Badge>
             )}
-          </div>
-          <div className="flex items-center gap-2">
-            {/* M5.3 — Compare against historical execution */}
-            <button
-              onClick={() => setComparisonOpen((o) => !o)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
-                comparisonOpen
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 border-gray-300 dark:border-gray-600 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400'
-              }`}
-            >
-              Compare
-            </button>
-            <button
-              onClick={() => setSelectedEpisode(null)}
-              className="text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 text-2xl leading-none w-8 h-8 rounded hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center transition-colors"
-            >
-              ×
-            </button>
+            {(dossier?.human_audit_trail?.length ?? 0) > 0 && (
+              <Badge variant="warning" className="text-[10px] gap-1">
+                <CheckCircle2 className="w-2.5 h-2.5" />
+                {dossier!.human_audit_trail.length} review{dossier!.human_audit_trail.length !== 1 ? 's' : ''}
+              </Badge>
+            )}
+            {execSummary?.display.overview_badge && (
+              <Badge variant="secondary" className="text-[10px]">
+                {execSummary.display.overview_badge}
+              </Badge>
+            )}
+
+            {/* Actions — right-aligned */}
+            <div className="ml-auto flex items-center gap-1.5">
+              <TooltipProvider>
+                {dossier && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button size="xs" variant="ghost" onClick={handleCopyJSON}>
+                        <Copy className="w-3 h-3" />
+                        {copyLabel}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Copy episode + dossier as JSON</TooltipContent>
+                  </Tooltip>
+                )}
+                <Button
+                  size="xs"
+                  variant={comparisonOpen ? 'default' : 'outline'}
+                  onClick={() => setComparisonOpen((o) => !o)}
+                >
+                  <GitCompare className="w-3 h-3" />
+                  Compare
+                </Button>
+                <Button size="xs" variant="ghost" onClick={() => setSelectedEpisode(null)}>
+                  <X className="w-4 h-4" />
+                </Button>
+              </TooltipProvider>
+            </div>
           </div>
         </div>
 
@@ -316,7 +396,7 @@ export function ForensicDossierDrawer() {
         )}
 
         {/* 3-Pane Layout */}
-        <div ref={panelRef} className="flex-1 flex overflow-hidden p-4 gap-4 relative bg-gray-100 dark:bg-gray-900">
+        <div ref={panelRef} className="flex-1 flex overflow-hidden p-4 gap-4 relative bg-gray-100 dark:bg-gray-900 scrollbar-thin">
           {/* M4.2 — SVG connection lines for active focus_key */}
           <FocusLinkOverlay activeFocusKey={activeFocusKey} panelRef={panelRef} />
           {/* Left — Expected Logic */}
@@ -400,7 +480,7 @@ export function ForensicDossierDrawer() {
           />
         )}
 
-      </div>
+      </motion.div>
     </div>
   )
 }

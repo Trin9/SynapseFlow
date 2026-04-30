@@ -4,6 +4,7 @@ import { useExecutionPoller } from '@/hooks/useExecutionPoller'
 import { useDAGPersistence } from '@/hooks/useDAGPersistence'
 import { useTheme } from '@/contexts/ThemeContext'
 import { runWorkflow, getExecutionNodes } from '@/api/client'
+import { ExecutionWorkbenchHeader } from '@/components/execution/ExecutionWorkbenchHeader'
 
 /**
  * Top toolbar: workflow name, mode toggle, save/load, clear, history, run.
@@ -33,6 +34,8 @@ export function Toolbar() {
   const setShowHistory = useGraphStore((s) => s.setShowHistory)
   const showLibrary = useGraphStore((s) => s.showLibrary)
   const setShowLibrary = useGraphStore((s) => s.setShowLibrary)
+  const useWorkbenchLayout = useGraphStore((s) => s.useWorkbenchLayout)
+  const setUseWorkbenchLayout = useGraphStore((s) => s.setUseWorkbenchLayout)
 
   const { theme, toggleTheme } = useTheme()
   const { pollingError } = useExecutionPoller()
@@ -70,6 +73,37 @@ export function Toolbar() {
   }
 
   const isReview = appMode === 'REVIEW'
+
+  if (useWorkbenchLayout) {
+    return (
+      <ExecutionWorkbenchHeader
+        isReview={isReview}
+        workflowName={workflowName}
+        setWorkflowName={setWorkflowName}
+        activeExecutionId={activeExecutionId}
+        error={error}
+        theme={theme}
+        toggleTheme={toggleTheme}
+        useWorkbenchLayout={useWorkbenchLayout}
+        setUseWorkbenchLayout={setUseWorkbenchLayout}
+        showLibrary={showLibrary}
+        setShowLibrary={setShowLibrary}
+        showHistory={showHistory}
+        setShowHistory={setShowHistory}
+        nodesCount={nodes.length}
+        isRunning={isRunning}
+        onSave={() => void handleSave()}
+        onClear={clearCanvas}
+        onRun={() => void handleRun()}
+        onBackToBuilder={exitReviewMode}
+        onEnterBuilder={() => {
+          if (isReview) exitReviewMode()
+          else setAppMode('BUILDER')
+        }}
+        onEnterReview={() => setAppMode('REVIEW')}
+      />
+    )
+  }
 
   return (
     <div className="h-12 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 flex items-center px-4 gap-4 shrink-0">
@@ -135,6 +169,32 @@ export function Toolbar() {
           {error}
         </span>
       )}
+
+      {/* Layout toggle */}
+      <div className="flex items-center rounded-md border border-gray-300 dark:border-gray-600 overflow-hidden">
+        <button
+          onClick={() => setUseWorkbenchLayout(false)}
+          className={`px-2 py-1 text-[11px] transition-colors ${
+            !useWorkbenchLayout
+              ? 'bg-gray-800 text-white dark:bg-gray-600'
+              : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+          }`}
+          title="Use the classic editor layout"
+        >
+          Classic
+        </button>
+        <button
+          onClick={() => setUseWorkbenchLayout(true)}
+          className={`px-2 py-1 text-[11px] transition-colors ${
+            useWorkbenchLayout
+              ? 'bg-blue-600 text-white'
+              : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+          }`}
+          title="Use the workbench layout"
+        >
+          Workbench
+        </button>
+      </div>
 
       {/* ---- BUILDER-only controls ---- */}
       {!isReview && (

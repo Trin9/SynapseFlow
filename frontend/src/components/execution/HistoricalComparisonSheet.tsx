@@ -1,57 +1,88 @@
 // M5.3 — Historical Comparison Sheet.
 //
-// A right-side overlay panel triggered from the ForensicDossierDrawer that
-// lets the user compare the current execution against a historical one.
-//
-// Layout (when comparison is loaded):
-//
-//   ┌─ EXECUTION COMPARISON ──────────────── [×] ─┐
-//   │  [CURRENT]           │  [HISTORICAL]          │
-//   │  id / dag / status   │  comparison title /    │
-//   │  started / duration  │  outcome / summary     │
-//   ├──────────────────────────────────────────────┤
-//   │  HIGHLIGHTS                                   │
-//   │  • item…                                      │
-//   ├──────────────────────────────────────────────┤
-//   │  ⚠ CAUTION                                   │
-//   │  caution text                                 │
-//   └──────────────────────────────────────────────┘
-//
-// When no historical ID has been submitted yet the panel shows a search form.
+// Phase D enhancements:
+//   • ComparisonNarrativeHeader: outcome verdict + dag context at top of body
+//   • Scene manifest default comparison target suggestion in search form
+//   • Improved current/historical split with run_label and duration
 import { useState } from 'react'
+import { X, GitCompare } from 'lucide-react'
 import { getExecutionSummaryView, getComparisonTarget } from '@/api/episodes'
+import { getSceneManifest } from '@/lib/sceneManifest'
 import type { ExecutionSummaryView, ComparisonSummaryView } from '@/types/workspace'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Separator } from '@/components/ui/separator'
+import { ScrollArea } from '@/components/ui/scroll-area'
+
+// ─── Narrative header ─────────────────────────────────────────────────────
+
+function outcomeVariant(outcome: string): 'success' | 'destructive' | 'warning' | 'secondary' {
+  if (outcome === 'match') return 'success'
+  if (outcome === 'divergent') return 'destructive'
+  if (outcome === 'partial') return 'warning'
+  return 'secondary'
+}
+
+const OUTCOME_LABEL: Record<string, string> = {
+  match:     'Consistent with historical baseline',
+  divergent: 'Diverged from historical baseline',
+  partial:   'Partially aligned — notable differences observed',
+}
+
+function ComparisonNarrativeHeader({
+  current,
+  comparison,
+}: {
+  current: ExecutionSummaryView
+  comparison: ComparisonSummaryView
+}) {
+  const outcome = comparison.outcome ?? 'unknown'
+  const label = OUTCOME_LABEL[outcome] ?? outcome
+
+  return (
+    <div className="px-4 py-3 rounded-xl border mb-1 bg-muted/40">
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Comparison Result</span>
+        <Badge variant={outcomeVariant(outcome)} className="uppercase text-[9px]">{outcome}</Badge>
+      </div>
+      <p className="text-sm font-semibold leading-snug">{label}</p>
+      <p className="text-xs mt-0.5 text-muted-foreground">
+        {current.dag_name}
+        {current.workflow_kind ? ` · ${current.workflow_kind}` : ''}
+        {current.display.run_label ? ` · ${current.display.run_label}` : ''}
+      </p>
+    </div>
+  )
+}
 
 // ─── Left (current execution) side ───────────────────────────────────────
 
 function CurrentSide({ summary }: { summary: ExecutionSummaryView }) {
   return (
     <div className="flex-1 min-w-0 space-y-2">
-      <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider block">
-        Current
-      </span>
-      <div className="space-y-1 text-xs text-gray-700 dark:text-gray-300">
+      <span className="wb-section-header block">Current</span>
+      <div className="space-y-1 text-xs text-foreground">
         <div className="flex gap-2">
-          <span className="text-gray-400 dark:text-gray-500 w-16 shrink-0">DAG</span>
+          <span className="text-muted-foreground w-16 shrink-0">DAG</span>
           <span className="font-medium truncate">{summary.dag_name}</span>
         </div>
         <div className="flex gap-2">
-          <span className="text-gray-400 dark:text-gray-500 w-16 shrink-0">Status</span>
+          <span className="text-muted-foreground w-16 shrink-0">Status</span>
           <span className="font-mono font-semibold">{summary.status}</span>
         </div>
         <div className="flex gap-2">
-          <span className="text-gray-400 dark:text-gray-500 w-16 shrink-0">Kind</span>
+          <span className="text-muted-foreground w-16 shrink-0">Kind</span>
           <span className="capitalize">{summary.workflow_kind}</span>
         </div>
         {summary.display.run_label && (
           <div className="flex gap-2">
-            <span className="text-gray-400 dark:text-gray-500 w-16 shrink-0">Label</span>
-            <span className="italic text-gray-500 dark:text-gray-400 truncate">{summary.display.run_label}</span>
+            <span className="text-muted-foreground w-16 shrink-0">Label</span>
+            <span className="italic text-muted-foreground truncate">{summary.display.run_label}</span>
           </div>
         )}
         <div className="flex gap-2">
-          <span className="text-gray-400 dark:text-gray-500 w-16 shrink-0">ID</span>
-          <span className="font-mono text-gray-300 dark:text-gray-600 truncate">{summary.execution_id.slice(0, 12)}…</span>
+          <span className="text-muted-foreground w-16 shrink-0">ID</span>
+          <span className="font-mono text-muted-foreground/50 truncate">{summary.execution_id.slice(0, 12)}…</span>
         </div>
       </div>
     </div>
@@ -61,33 +92,22 @@ function CurrentSide({ summary }: { summary: ExecutionSummaryView }) {
 // ─── Right (historical / comparison) side ─────────────────────────────────
 
 function HistoricalSide({ comparison }: { comparison: ComparisonSummaryView }) {
-  const outcomeColor =
-    comparison.outcome === 'match'
-      ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800'
-      : comparison.outcome === 'divergent'
-      ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800'
-      : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600'
-
   return (
     <div className="flex-1 min-w-0 space-y-2">
-      <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider block">
-        Historical
-      </span>
-      <div className="space-y-1 text-xs text-gray-700 dark:text-gray-300">
+      <span className="wb-section-header block">Historical</span>
+      <div className="space-y-1 text-xs text-foreground">
         {comparison.outcome && (
-          <span
-            className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded border uppercase mb-1 ${outcomeColor}`}
-          >
+          <Badge variant={outcomeVariant(comparison.outcome)} className="uppercase text-[9px] mb-1">
             {comparison.outcome}
-          </span>
+          </Badge>
         )}
         <p className="font-medium leading-snug">{comparison.title}</p>
         {comparison.compared_against && (
-          <p className="text-gray-500 dark:text-gray-400 italic text-[11px]">{comparison.compared_against}</p>
+          <p className="text-muted-foreground italic text-[11px]">{comparison.compared_against}</p>
         )}
         <div className="flex gap-2">
-          <span className="text-gray-400 dark:text-gray-500 w-16 shrink-0">ID</span>
-          <span className="font-mono text-gray-300 dark:text-gray-600 truncate">{comparison.execution_id.slice(0, 12)}…</span>
+          <span className="text-muted-foreground w-16 shrink-0">ID</span>
+          <span className="font-mono text-muted-foreground/50 truncate">{comparison.execution_id.slice(0, 12)}…</span>
         </div>
       </div>
     </div>
@@ -108,6 +128,13 @@ export function HistoricalComparisonSheet({ execId, onClose }: HistoricalCompari
   const [error, setError] = useState<string | null>(null)
   const [currentSummary, setCurrentSummary] = useState<ExecutionSummaryView | null>(null)
   const [comparison, setComparison] = useState<ComparisonSummaryView | null>(null)
+
+  // Phase D — suggest scene manifest default comparison target
+  const manifestDefault = (() => {
+    if (!currentSummary) return null
+    const m = getSceneManifest(currentSummary.dag_id, currentSummary.dag_name)
+    return m?.defaultComparisonTarget ?? null
+  })()
 
   async function handleFetch() {
     const historicalId = inputValue.trim()
@@ -131,25 +158,21 @@ export function HistoricalComparisonSheet({ execId, onClose }: HistoricalCompari
   }
 
   return (
-    <div className="absolute right-0 top-0 bottom-0 w-[480px] bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700 shadow-2xl z-20 flex flex-col overflow-hidden">
+    <div className="absolute right-0 top-0 bottom-0 w-[480px] bg-card border-l z-20 flex flex-col overflow-hidden wb-animate-slide-right">
       {/* Header */}
-      <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between shrink-0">
-        <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+      <div className="h-10 px-4 border-b flex items-center justify-between shrink-0">
+        <span className="wb-section-header flex items-center gap-1.5">
+          <GitCompare className="w-3.5 h-3.5" />
           Execution Comparison
         </span>
-        <button
-          onClick={onClose}
-          className="text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 text-xl leading-none w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-        >
-          ×
-        </button>
+        <Button size="xs" variant="ghost" onClick={onClose} className="h-6 w-6 p-0">
+          <X className="w-3.5 h-3.5" />
+        </Button>
       </div>
 
       {/* Search form */}
-      <div className="px-5 py-3 border-b border-gray-100 dark:border-gray-800 shrink-0 space-y-2">
-        <label className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider block">
-          Historical Execution ID
-        </label>
+      <div className="px-4 py-3 border-b shrink-0 space-y-2">
+        <label className="wb-section-header block">Historical Execution ID</label>
         <div className="flex gap-2">
           <input
             type="text"
@@ -157,39 +180,44 @@ export function HistoricalComparisonSheet({ execId, onClose }: HistoricalCompari
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') handleFetch() }}
             placeholder="Paste execution UUID…"
-            className="flex-1 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100"
+            className="flex-1 border rounded-lg px-3 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-ring bg-background text-foreground"
           />
-          <button
-            onClick={handleFetch}
-            disabled={loading || !inputValue.trim()}
-            className="px-4 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg disabled:opacity-50 hover:bg-blue-700 transition-colors"
-          >
+          <Button size="sm" onClick={handleFetch} disabled={loading || !inputValue.trim()}>
             {loading ? '…' : 'Compare'}
-          </button>
+          </Button>
         </div>
-        {error && (
-          <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
+        {/* Phase D — scene manifest default comparison suggestion */}
+        {manifestDefault && !comparison && (
+          <button
+            onClick={() => setInputValue(manifestDefault)}
+            className="text-[10px] text-blue-500 dark:text-blue-400 hover:underline flex items-center gap-1"
+          >
+            <span>↳ Use suggested baseline:</span>
+            <span className="font-mono">{manifestDefault.slice(0, 16)}…</span>
+          </button>
         )}
+        {error && <p className="text-xs text-destructive">{error}</p>}
       </div>
 
       {/* Comparison body */}
-      <div className="flex-1 overflow-y-auto">
+      <ScrollArea className="flex-1 min-h-0">
         {currentSummary && comparison ? (
-          <div className="p-5 space-y-5">
+          <div className="p-4 space-y-4">
+            {/* Phase D — Narrative outcome header */}
+            <ComparisonNarrativeHeader current={currentSummary} comparison={comparison} />
+
             {/* Split view */}
-            <div className="flex gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+            <div className="flex gap-4 p-4 bg-muted/40 rounded-xl border">
               <CurrentSide summary={currentSummary} />
-              <div className="w-px bg-gray-200 dark:bg-gray-700 shrink-0 self-stretch" />
+              <Separator orientation="vertical" className="self-stretch" />
               <HistoricalSide comparison={comparison} />
             </div>
 
             {/* Summary */}
             {comparison.summary && (
               <div className="space-y-1">
-                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
-                  Summary
-                </span>
-                <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed bg-gray-50 dark:bg-gray-800 p-3 rounded-lg border border-gray-100 dark:border-gray-700">
+                <span className="wb-section-header block">Summary</span>
+                <p className="text-sm text-foreground leading-relaxed bg-muted/40 p-3 rounded-lg border">
                   {comparison.summary}
                 </p>
               </div>
@@ -198,12 +226,10 @@ export function HistoricalComparisonSheet({ execId, onClose }: HistoricalCompari
             {/* Highlights */}
             {(comparison.highlights ?? []).length > 0 && (
               <div className="space-y-2">
-                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
-                  Highlights
-                </span>
+                <span className="wb-section-header block">Highlights</span>
                 <ul className="space-y-1">
                   {comparison.highlights!.map((hl, i) => (
-                    <li key={i} className="flex gap-2 text-sm text-gray-700 dark:text-gray-300">
+                    <li key={i} className="flex gap-2 text-sm text-foreground">
                       <span className="text-blue-400 shrink-0">•</span>
                       <span>{hl}</span>
                     </li>
@@ -221,11 +247,11 @@ export function HistoricalComparisonSheet({ execId, onClose }: HistoricalCompari
             )}
           </div>
         ) : !loading && (
-          <div className="flex flex-col items-center justify-center h-full text-gray-400 dark:text-gray-500 gap-2 px-8 text-center">
+          <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2 px-8 text-center py-20">
             <p className="text-sm">Enter a historical execution ID above to compare it against the current run.</p>
           </div>
         )}
-      </div>
+      </ScrollArea>
     </div>
   )
 }

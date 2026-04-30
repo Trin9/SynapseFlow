@@ -2,16 +2,181 @@
 @tailwind components;
 @tailwind utilities;
 
-/* React Flow overrides */
+/* ─── shadcn/ui CSS Variables ─────────────────────────────────────────────── */
+
+:root {
+  --background: 0 0% 100%;
+  --foreground: 0 0% 3.9%;
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 3.9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 0 0% 3.9%;
+  --primary: 0 0% 9%;
+  --primary-foreground: 0 0% 98%;
+  --secondary: 0 0% 96.1%;
+  --secondary-foreground: 0 0% 9%;
+  --muted: 0 0% 96.1%;
+  --muted-foreground: 0 0% 45.1%;
+  --accent: 0 0% 96.1%;
+  --accent-foreground: 0 0% 9%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 0 0% 89.8%;
+  --input: 0 0% 89.8%;
+  --ring: 0 0% 3.9%;
+  --radius: 0.5rem;
+}
+
+.dark {
+  --background: 0 0% 3.9%;
+  --foreground: 0 0% 98%;
+  --card: 0 0% 3.9%;
+  --card-foreground: 0 0% 98%;
+  --popover: 0 0% 3.9%;
+  --popover-foreground: 0 0% 98%;
+  --primary: 0 0% 98%;
+  --primary-foreground: 0 0% 9%;
+  --secondary: 0 0% 14.9%;
+  --secondary-foreground: 0 0% 98%;
+  --muted: 0 0% 14.9%;
+  --muted-foreground: 0 0% 63.9%;
+  --accent: 0 0% 14.9%;
+  --accent-foreground: 0 0% 98%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 0 0% 14.9%;
+  --input: 0 0% 14.9%;
+  --ring: 0 0% 83.1%;
+}
+
+/* ─── Workbench Design Tokens ─────────────────────────────────────────────── */
+
+:root {
+  /* Surfaces */
+  --wb-bg:         #f8fafc;
+  --wb-panel:      #ffffff;
+  --wb-panel-alt:  #f1f5f9;
+  --wb-border:     #e2e8f0;
+  --wb-border-soft:#f1f5f9;
+
+  /* Text */
+  --wb-text:       #0f172a;
+  --wb-text-muted: #64748b;
+  --wb-text-faint: #94a3b8;
+
+  /* Shadows */
+  --wb-shadow-sm:  0 1px 3px 0 rgb(0 0 0 / 0.08), 0 1px 2px -1px rgb(0 0 0 / 0.05);
+  --wb-shadow-md:  0 4px 12px -2px rgb(0 0 0 / 0.10), 0 2px 6px -2px rgb(0 0 0 / 0.06);
+  --wb-shadow-lg:  0 20px 40px -8px rgb(0 0 0 / 0.18), 0 8px 16px -4px rgb(0 0 0 / 0.10);
+
+  /* Radii */
+  --wb-radius-sm:  4px;
+  --wb-radius:     8px;
+  --wb-radius-lg:  12px;
+  --wb-radius-xl:  16px;
+
+  /* Z-index layers */
+  --z-canvas:      1;
+  --z-tray:        20;
+  --z-header:      30;
+  --z-dossier:     50;
+  --z-toast:       80;
+}
+
+.dark {
+  --wb-bg:         #020617;
+  --wb-panel:      #0f172a;
+  --wb-panel-alt:  #1e293b;
+  --wb-border:     #1e293b;
+  --wb-border-soft:#0f172a;
+
+  --wb-text:       #f1f5f9;
+  --wb-text-muted: #94a3b8;
+  --wb-text-faint: #475569;
+
+  --wb-shadow-sm:  0 1px 3px 0 rgb(0 0 0 / 0.3);
+  --wb-shadow-md:  0 4px 12px -2px rgb(0 0 0 / 0.4);
+  --wb-shadow-lg:  0 20px 40px -8px rgb(0 0 0 / 0.6);
+}
+
+/* ─── Animation Keyframes ─────────────────────────────────────────────────── */
+
+@keyframes wb-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes wb-slide-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes wb-slide-in-right {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes wb-scale-in {
+  from { opacity: 0; transform: scale(0.97); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* ─── Animation Utilities ─────────────────────────────────────────────────── */
+
+.wb-animate-fade-in   { animation: wb-fade-in      140ms ease-out both; }
+.wb-animate-slide-up  { animation: wb-slide-up     180ms ease-out both; }
+.wb-animate-slide-right { animation: wb-slide-in-right 180ms ease-out both; }
+.wb-animate-scale-in  { animation: wb-scale-in     200ms cubic-bezier(.16,1,.3,1) both; }
+
+/* ─── Panel Shell Utilities ───────────────────────────────────────────────── */
+
+.wb-panel-shell {
+  background: var(--wb-panel);
+  border: 1px solid var(--wb-border);
+  box-shadow: var(--wb-shadow-sm);
+  border-radius: var(--wb-radius-lg);
+}
+
+.wb-tray-shell {
+  background: var(--wb-panel);
+  border-color: var(--wb-border);
+  box-shadow: var(--wb-shadow-lg);
+}
+
+.wb-section-header {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--wb-text-faint);
+}
+
+/* ─── Scrollbar polish ────────────────────────────────────────────────────── */
+
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar { display: none; }
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--wb-border) transparent;
+}
+.scrollbar-thin::-webkit-scrollbar { width: 4px; height: 4px; }
+.scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--wb-border);
+  border-radius: 4px;
+}
+
+/* ─── React Flow overrides ────────────────────────────────────────────────── */
+
 .react-flow__node {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
+.react-flow__attribution { display: none; }
 
-.react-flow__attribution {
-  display: none;
-}
+/* ─── Misc ────────────────────────────────────────────────────────────────── */
 
-/* Drag preview ghost */
-.dragging {
-  opacity: 0.5;
-}
+.dragging { opacity: 0.5; }

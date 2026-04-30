@@ -84,6 +84,10 @@ export type FlowEdge = Edge
 export type AppMode = 'BUILDER' | 'REVIEW'
 
 interface GraphState {
+  // Layout feature flag (Phase 0 / Phase A)
+  useWorkbenchLayout: boolean
+  setUseWorkbenchLayout: (enabled: boolean) => void
+
   // Mode toggle
   appMode: AppMode
   setAppMode: (mode: AppMode) => void
@@ -161,6 +165,9 @@ function generateNodeId(): string {
 }
 
 export const useGraphStore = create<GraphState>((set, get) => ({
+  useWorkbenchLayout: false,
+  setUseWorkbenchLayout: (enabled) => set({ useWorkbenchLayout: enabled }),
+
   appMode: 'BUILDER',
   setAppMode: (mode) => set({ appMode: mode }),
 

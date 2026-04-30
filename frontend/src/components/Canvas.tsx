@@ -1,4 +1,5 @@
 import { useCallback, type DragEvent } from 'react'
+import { useMemo } from 'react'
 import {
   ReactFlow,
   Background,
@@ -12,11 +13,16 @@ import { nodeTypes } from './nodes/CustomNodes'
 import { edgeTypes } from './edges/LabeledEdge'
 import { useGraphStore, type FlowNode, type FlowEdge } from '@/hooks/useGraphStore'
 import type { AnyNodeType } from '@/types'
+import { useQuery } from '@tanstack/react-query'
+import { getExecutionSummaryView, listEpisodeSummariesByExecution } from '@/api/episodes'
+import { getSceneManifest } from '@/lib/sceneManifest'
 
 import { useRef } from 'react'
 
 export function Canvas() {
   const appMode = useGraphStore((s) => s.appMode)
+  const activeExecutionId = useGraphStore((s) => s.activeExecutionId)
+  const useWorkbenchLayout = useGraphStore((s) => s.useWorkbenchLayout)
   const nodes = useGraphStore((s) => s.nodes)
   const edges = useGraphStore((s) => s.edges)
   const onNodesChange = useGraphStore((s) => s.onNodesChange)
@@ -70,11 +76,89 @@ export function Canvas() {
 
   // In REVIEW mode the canvas is read-only: no drag, no connect, no select.
   const isReview = appMode === 'REVIEW'
+  const useEpisodeRendererSwap = isReview && useWorkbenchLayout && !!activeExecutionId
+
+  const { data: episodeSummaries = [], isLoading: episodesLoading } = useQuery({
+    queryKey: ['review-canvas-episodes', activeExecutionId],
+    queryFn: () => listEpisodeSummariesByExecution(activeExecutionId!),
+    enabled: useEpisodeRendererSwap,
+  })
+
+  const { data: executionSummary } = useQuery({
+    queryKey: ['review-canvas-summary', activeExecutionId],
+    queryFn: () => getExecutionSummaryView(activeExecutionId!),
+    enabled: useEpisodeRendererSwap,
+  })
+
+  const sceneManifest = getSceneManifest(executionSummary?.dag_id, executionSummary?.dag_name)
+
+  const orderedEpisodeSummaries = useMemo(() => {
+    if (!sceneManifest?.curatedEpisodeOrder?.length) return episodeSummaries
+
+    const orderTokens = sceneManifest.curatedEpisodeOrder.map((token) => token.toLowerCase())
+
+    const rank = (value: { episode_id: string; label: string; display: { summary?: string } }) => {
+      const haystack = `${value.episode_id} ${value.label} ${value.display.summary ?? ''}`.toLowerCase()
+      const idx = orderTokens.findIndex((token) => haystack.includes(token))
+      return idx === -1 ? Number.MAX_SAFE_INTEGER : idx
+    }
+
+    return [...episodeSummaries].sort((a, b) => {
+      const ra = rank(a)
+      const rb = rank(b)
+      if (ra !== rb) return ra - rb
+      return a.label.localeCompare(b.label)
+    })
+  }, [episodeSummaries, sceneManifest?.curatedEpisodeOrder])
 
   // SuperNode drilldown: restrict visible nodes/edges to the active super-group
   const isDrilldown = viewLevel === 'drilldown' && activeSuperNodeId != null
 
-  const visibleNodes: FlowNode[] = isDrilldown
+  const reviewSwapNodes = useMemo<FlowNode[]>(() => {
+    if (!useEpisodeRendererSwap) return []
+    return orderedEpisodeSummaries.map((sv, idx) => ({
+      id: `episode-${sv.episode_id}`,
+      type: 'episodeOverviewNode',
+      position: { x: 100 + idx * 310, y: 120 },
+      data: {
+        label: sv.label,
+        nodeType: 'llm',
+        action: sv.display.summary ?? '',
+        config: {
+          episode_id: sv.episode_id,
+          status: sv.status,
+          verdict: sv.display.verdict,
+          verdict_label: sv.display.verdict_label,
+          evidence_count: sv.evidence_count,
+          handle_count: sv.handle_count,
+          confidence: sv.confidence,
+          child_preview: sceneManifest?.childPreview ?? [],
+        },
+      },
+    }))
+  }, [orderedEpisodeSummaries, sceneManifest?.childPreview, useEpisodeRendererSwap])
+
+  const reviewSwapEdges = useMemo<FlowEdge[]>(() => {
+    if (!useEpisodeRendererSwap) return []
+    if (orderedEpisodeSummaries.length <= 1) return []
+    const edgesOut: FlowEdge[] = []
+    for (let i = 0; i < orderedEpisodeSummaries.length - 1; i += 1) {
+      edgesOut.push({
+        id: `episode-edge-${i}`,
+        source: `episode-${orderedEpisodeSummaries[i].episode_id}`,
+        target: `episode-${orderedEpisodeSummaries[i + 1].episode_id}`,
+        type: 'labeled',
+        animated: true,
+        style: { stroke: '#94a3b8', strokeWidth: 2 },
+        data: { label: `${i + 1}` },
+      } as FlowEdge)
+    }
+    return edgesOut
+  }, [orderedEpisodeSummaries, useEpisodeRendererSwap])
+
+  const visibleNodes: FlowNode[] = useEpisodeRendererSwap
+    ? reviewSwapNodes
+    : isDrilldown
     ? nodes.filter((n) => {
         if (n.id === activeSuperNodeId) return true
         const superNode = nodes.find((s) => s.id === activeSuperNodeId)
@@ -82,7 +166,9 @@ export function Canvas() {
       })
     : nodes
 
-  const visibleEdges: FlowEdge[] = isDrilldown
+  const visibleEdges: FlowEdge[] = useEpisodeRendererSwap
+    ? reviewSwapEdges
+    : isDrilldown
     ? (() => {
         const superNode = nodes.find((s) => s.id === activeSuperNodeId)
         const childSet = new Set(superNode?.data.childNodeIds ?? [])
@@ -94,7 +180,7 @@ export function Canvas() {
   return (
     <div className="flex-1 flex flex-col">
       {/* Drilldown breadcrumb bar */}
-      {isDrilldown && (
+      {!useEpisodeRendererSwap && isDrilldown && (
         <div className="flex items-center gap-2 px-4 py-1.5 bg-indigo-50 dark:bg-indigo-900/30 border-b border-indigo-200 dark:border-indigo-700 text-xs shrink-0">
           <button
             onClick={exitDrilldown}
@@ -147,7 +233,12 @@ export function Canvas() {
             zoomable
             className="!bg-gray-100 dark:!bg-gray-800 !border-gray-200 dark:!border-gray-700"
           />
-          {isReview && nodes.length === 0 && (
+          {useEpisodeRendererSwap && episodesLoading && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <p className="text-sm text-gray-400 dark:text-gray-500">Loading episode overview...</p>
+            </div>
+          )}
+          {isReview && visibleNodes.length === 0 && !episodesLoading && (
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
               <p className="text-sm text-gray-400 dark:text-gray-500">Load a workflow to view its execution state.</p>
             </div>

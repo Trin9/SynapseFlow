@@ -1,10 +1,18 @@
 import { useState, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { Play, Upload, BookOpen, GitCompare, ChevronRight, Zap, Loader2 } from 'lucide-react'
 import { listDAGs, getDAG, runSavedDAG } from '@/api/client'
 import { listExecutionSummaries } from '@/api/episodes'
 import type { DAGConfig } from '@/types'
 import type { ExecutionSummaryView } from '@/types/workspace'
 import { useGraphStore } from '@/hooks/useGraphStore'
+import { getSceneManifest } from '@/lib/sceneManifest'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Skeleton } from '@/components/ui/skeleton'
+import { cn } from '@/lib/utils'
 
 // ─── types ────────────────────────────────────────────────────────────────
 
@@ -12,13 +20,13 @@ type LibraryTab = 'library' | 'history' | 'spec'
 
 // ─── helpers ──────────────────────────────────────────────────────────────
 
-function statusColor(status: ExecutionSummaryView['status']): string {
+function statusVariant(status: ExecutionSummaryView['status']): "success" | "info" | "destructive" | "warning" | "ghost" {
   switch (status) {
-    case 'completed': return 'bg-green-100 text-green-700'
-    case 'running':   return 'bg-blue-100 text-blue-700'
-    case 'failed':    return 'bg-red-100 text-red-700'
-    case 'suspended': return 'bg-amber-100 text-amber-700'
-    default:          return 'bg-gray-100 text-gray-500'
+    case 'completed': return 'success'
+    case 'running':   return 'info'
+    case 'failed':    return 'destructive'
+    case 'suspended': return 'warning'
+    default:          return 'ghost'
   }
 }
 
@@ -70,14 +78,73 @@ function LibraryContent({ dags, executions, onLoad, onRun, onReview }: LibraryCo
     }
   }
 
+  const quickScenes = [
+    {
+      key: 'boutique_checkout_consistency_audit',
+      title: 'Boutique Checkout Consistency Audit',
+    },
+    {
+      key: 'checkout_payment_unreachable_agent_loop',
+      title: 'Checkout Payment Unreachable Agent Loop',
+    },
+  ]
+
   return (
     <div>
       {actionError && (
-        <div className="mx-3 mt-2 text-[11px] text-red-600 bg-red-50 border border-red-200 rounded px-2 py-1">
+        <div className="mx-3 mt-2 text-[11px] text-destructive bg-destructive/10 border border-destructive/20 rounded px-2 py-1">
           {actionError}
         </div>
       )}
-      <div className="divide-y divide-gray-100 dark:divide-gray-800">
+
+      <div className="px-3 pt-3 pb-2 border-b">
+        <div className="wb-section-header mb-2 flex items-center gap-1.5">
+          <Zap className="w-3 h-3 text-amber-500" />
+          Quick Scene Entry
+        </div>
+        <div className="grid grid-cols-1 gap-1.5">
+          {quickScenes.map((scene) => {
+            const dag = dags.find((d) => {
+              const id = (d.id ?? '').toLowerCase()
+              const name = (d.name ?? '').toLowerCase().replace(/\s+/g, '_')
+              return id === scene.key || name === scene.key
+            })
+
+            const latestExec = dag
+              ? executions
+                  .filter((e) => e.dag_id === dag.id)
+                  .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime())[0]
+              : undefined
+
+            const disabled = !dag || !latestExec
+
+            return (
+              <button
+                key={scene.key}
+                disabled={disabled}
+                onClick={() => latestExec && onReview(latestExec.execution_id)}
+                className={cn(
+                  "text-left px-3 py-2.5 rounded-lg border transition-all",
+                  "bg-card hover:bg-accent hover:border-accent-foreground/20",
+                  "disabled:opacity-40 disabled:cursor-not-allowed",
+                  !disabled && "hover:shadow-sm"
+                )}
+                title={disabled ? 'Scene not available yet (missing workflow or execution history)' : 'Open latest execution directly in review + dossier path'}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-[11px] font-semibold text-foreground truncate">{scene.title}</div>
+                  <ChevronRight className="w-3 h-3 text-muted-foreground shrink-0" />
+                </div>
+                <div className="text-[10px] text-muted-foreground mt-0.5">
+                  {disabled ? 'Unavailable' : `Latest: ${latestExec!.execution_id.slice(0, 8)}…`}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      <div className="divide-y">
         {dags.map((dag) => {
           const id = dag.id!
           const recentExecs = executions
@@ -89,76 +156,97 @@ function LibraryContent({ dags, executions, onLoad, onRun, onReview }: LibraryCo
 
           return (
             <div key={id}>
-              <div className="px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                {/* DAG name + meta */}
-                <button
-                  className="w-full text-left mb-2"
-                  onClick={() => setExpandedId(isExpanded ? null : id)}
-                >
-                  <div className="text-xs font-semibold text-gray-800 dark:text-gray-100 truncate">{dag.name}</div>
-                  <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
-                    {dag.nodes?.length ?? 0} nodes · {dag.edges?.length ?? 0} edges
-                    {recentExecs.length > 0 && (
-                      <span className="ml-2 text-blue-400">
-                        {recentExecs.length} recent run{recentExecs.length !== 1 ? 's' : ''}
-                      </span>
-                    )}
-                  </div>
-                </button>
+              <div className="px-3 py-3 hover:bg-accent/30 transition-colors">
+                {(() => {
+                  const scene = getSceneManifest(dag.id, dag.name)
+                  const latestExec = recentExecs[0]
 
-                {/* Action buttons */}
-                <div className="flex gap-1.5">
-                  <button
-                    disabled={isBusy}
-                    onClick={() => withBusy(id, () => onLoad(id))}
-                    title="Load DAG onto canvas"
-                    className="flex-1 px-2 py-1 text-[10px] font-medium text-gray-600 dark:text-gray-300
-                               bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600
-                               rounded hover:bg-gray-50 dark:hover:bg-gray-700
-                               disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Load
-                  </button>
-                  <button
-                    disabled={isBusy}
-                    onClick={() => withBusy(id, () => onRun(id))}
-                    title="Run this workflow now"
-                    className="flex-1 px-2 py-1 text-[10px] font-medium text-white bg-blue-600
-                               rounded hover:bg-blue-700
-                               disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {isBusy ? '…' : 'Run'}
-                  </button>
-                </div>
-
-                {/* Recent executions (expanded) */}
-                {isExpanded && (
-                  <div className="mt-2 space-y-1 border-t border-gray-100 dark:border-gray-800 pt-2">
-                    {recentExecs.length === 0 ? (
-                      <div className="text-[10px] text-gray-400 dark:text-gray-500">No executions yet.</div>
-                    ) : (
-                      recentExecs.map((exec) => (
-                        <div key={exec.execution_id} className="flex items-center gap-2">
-                          <span className={`text-[9px] font-bold px-1 py-0.5 rounded uppercase shrink-0 ${statusColor(exec.status)}`}>
-                            {exec.status}
-                          </span>
-                          <span className="text-[10px] text-gray-500 dark:text-gray-400 flex-1 truncate min-w-0">
-                            {formatDate(exec.started_at)}
-                          </span>
-                          <span className="text-[10px] text-gray-400 dark:text-gray-500 shrink-0">
-                            {formatDuration(exec.duration_ms)}
-                          </span>
-                          <button
-                            onClick={() => onReview(exec.execution_id)}
-                            className="text-[10px] font-medium text-blue-600 hover:text-blue-800 shrink-0"
-                          >
-                            Review
-                          </button>
+                  return (
+                    <>
+                      {/* DAG name + meta */}
+                      <button
+                        className="w-full text-left mb-2.5"
+                        onClick={() => setExpandedId(isExpanded ? null : id)}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="text-xs font-semibold text-foreground truncate">
+                              {scene?.title ?? dag.name}
+                            </div>
+                            <div className="text-[10px] text-muted-foreground mt-0.5">
+                              {dag.nodes?.length ?? 0} nodes · {dag.edges?.length ?? 0} edges
+                              {recentExecs.length > 0 && (
+                                <span className="ml-2 text-blue-500 dark:text-blue-400">
+                                  {recentExecs.length} run{recentExecs.length !== 1 ? 's' : ''}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <Badge variant={scene ? "secondary" : "ghost"} className="text-[9px] shrink-0">
+                            {scene ? 'Curated' : 'Standard'}
+                          </Badge>
                         </div>
-                      ))
-                    )}
-                  </div>
-                )}
+                        {scene?.description && (
+                          <p className="mt-1.5 text-[11px] text-muted-foreground leading-relaxed">
+                            {scene.description}
+                          </p>
+                        )}
+                      </button>
+
+                      {/* Primary actions */}
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <Button size="xs" variant="outline" disabled={isBusy} onClick={() => withBusy(id, () => onLoad(id))} title="Load DAG onto canvas">
+                          <Upload className="w-3 h-3" />
+                          Load
+                        </Button>
+                        <Button size="xs" variant="default" disabled={isBusy} onClick={() => withBusy(id, () => onRun(id))} title="Run this workflow now">
+                          {isBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+                          Run
+                        </Button>
+                        <Button size="xs" variant="outline" disabled={!latestExec} onClick={() => latestExec && onReview(latestExec.execution_id)} title="Open dossier from the latest execution">
+                          <BookOpen className="w-3 h-3" />
+                          Open Dossier
+                        </Button>
+                        <Button size="xs" variant="outline" disabled={!latestExec} onClick={() => latestExec && onReview(latestExec.execution_id)} title="Open review workspace then compare">
+                          <GitCompare className="w-3 h-3" />
+                          Compare
+                        </Button>
+                      </div>
+
+                      {scene?.recommendedReplayPercent != null && (
+                        <p className="mt-1.5 text-[10px] text-muted-foreground">
+                          Recommended replay: {scene.recommendedReplayPercent}%
+                        </p>
+                      )}
+
+                      {/* Recent executions (expanded) */}
+                      {isExpanded && (
+                        <div className="mt-2 space-y-1 border-t pt-2">
+                          {recentExecs.length === 0 ? (
+                            <div className="text-[10px] text-muted-foreground">No executions yet.</div>
+                          ) : (
+                            recentExecs.map((exec) => (
+                              <div key={exec.execution_id} className="flex items-center gap-2">
+                                <Badge variant={statusVariant(exec.status)} className="text-[9px] uppercase">
+                                  {exec.status}
+                                </Badge>
+                                <span className="text-[10px] text-muted-foreground flex-1 truncate min-w-0">
+                                  {formatDate(exec.started_at)}
+                                </span>
+                                <span className="text-[10px] text-muted-foreground shrink-0">
+                                  {formatDuration(exec.duration_ms)}
+                                </span>
+                                <Button size="xs" variant="ghost" className="h-5 px-1.5 text-[10px] text-blue-600" onClick={() => onReview(exec.execution_id)}>
+                                  Review
+                                </Button>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )
+                })()}
               </div>
             </div>
           )
@@ -178,7 +266,7 @@ interface HistoryContentProps {
 function HistoryContent({ executions, onReview }: HistoryContentProps) {
   if (executions.length === 0) {
     return (
-      <div className="text-xs text-gray-400 dark:text-gray-500 text-center py-10 px-4">
+      <div className="text-xs text-muted-foreground text-center py-10 px-4">
         No executions recorded yet.
       </div>
     )
@@ -207,35 +295,30 @@ function HistoryContent({ executions, onReview }: HistoryContentProps) {
     )
 
   return (
-    <div className="divide-y divide-gray-100 dark:divide-gray-800">
+    <div className="divide-y">
       {sortedGroups.map(({ dagId, dagName, execs }) => (
         <div key={dagId} className="px-3 py-2.5">
-          <div className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">
+          <div className="wb-section-header mb-1.5">
             {dagName}
-            <span className="ml-1 font-normal text-gray-400 dark:text-gray-500 normal-case tracking-normal">
+            <span className="ml-1 font-normal text-muted-foreground normal-case tracking-normal">
               ({execs.length})
             </span>
           </div>
           <div className="space-y-1">
             {execs.map((exec) => (
               <div key={exec.execution_id} className="flex items-center gap-2">
-                <span
-                  className={`text-[9px] font-bold px-1 py-0.5 rounded uppercase shrink-0 ${statusColor(exec.status)}`}
-                >
+                <Badge variant={statusVariant(exec.status)} className="text-[9px] uppercase">
                   {exec.status}
-                </span>
-                <span className="text-[10px] text-gray-500 dark:text-gray-400 flex-1 truncate min-w-0">
+                </Badge>
+                <span className="text-[10px] text-muted-foreground flex-1 truncate min-w-0">
                   {formatDate(exec.started_at)}
                 </span>
-                <span className="text-[10px] text-gray-400 dark:text-gray-500 shrink-0">
+                <span className="text-[10px] text-muted-foreground shrink-0">
                   {formatDuration(exec.duration_ms)}
                 </span>
-                <button
-                  onClick={() => onReview(exec.execution_id)}
-                  className="text-[10px] font-medium text-blue-600 hover:text-blue-800 shrink-0"
-                >
+                <Button size="xs" variant="ghost" className="h-5 px-1.5 text-[10px] text-blue-600" onClick={() => onReview(exec.execution_id)}>
                   Review
-                </button>
+                </Button>
               </div>
             ))}
           </div>
@@ -375,42 +458,27 @@ export function WorkflowLibrary() {
     { key: 'history', label: 'History' },
     { key: 'spec',    label: 'Spec' },
   ]
+  void tabs // shadcn Tabs component used instead
 
   return (
-    <div className="w-80 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex flex-col overflow-hidden shrink-0">
-      {/* Header */}
-      <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between shrink-0">
-        <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Workflow Library</span>
-        <button
-          onClick={() => setShowLibrary(false)}
-          title="Close"
-          className="text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-        >
-          ✕
-        </button>
-      </div>
-
-      {/* Tab bar */}
-      <div className="flex border-b border-gray-100 dark:border-gray-800 shrink-0">
-        {tabs.map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => setTab(key)}
-            className={`flex-1 py-1.5 text-xs font-medium transition-colors ${
-              tab === key
-                ? 'border-b-2 border-blue-500 text-blue-600'
-                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
+    <div className="w-full h-full flex flex-col overflow-hidden bg-background">
+      {/* Tabs */}
+      <div className="px-3 pt-2 shrink-0">
+        <Tabs value={tab} onValueChange={(v) => setTab(v as LibraryTab)} className="w-full">
+          <TabsList className="w-full h-8">
+            <TabsTrigger value="library" className="flex-1 text-xs">Library</TabsTrigger>
+            <TabsTrigger value="history" className="flex-1 text-xs">History</TabsTrigger>
+            <TabsTrigger value="spec" className="flex-1 text-xs">Spec</TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto">
+      <ScrollArea className="flex-1 min-h-0">
         {loading ? (
-          <div className="text-xs text-gray-400 dark:text-gray-500 text-center py-10">Loading…</div>
+          <div className="p-3 space-y-2">
+            {[1,2,3].map(i => <Skeleton key={i} className="h-24 w-full rounded-lg" />)}
+          </div>
         ) : tab === 'library' ? (
           <LibraryContent
             dags={dags}
@@ -424,7 +492,7 @@ export function WorkflowLibrary() {
         ) : (
           <SpecContent onLoadSpec={handleLoadSpec} />
         )}
-      </div>
+      </ScrollArea>
     </div>
   )
 }
