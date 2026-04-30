@@ -47,19 +47,27 @@ export function ExecutionWorkbenchHeader({
 }: ExecutionWorkbenchHeaderProps) {
   return (
     <div className="h-14 bg-slate-950 text-slate-100 border-b border-slate-800 flex items-center px-4 gap-3 shrink-0">
-      <div className="flex items-center gap-2 shrink-0">
-        <span className="text-base font-bold tracking-tight">Synapse Workbench</span>
-        <span className="text-[10px] uppercase text-slate-400">v0.1.0</span>
+      <div className="min-w-0 flex items-center gap-2 shrink-0">
+        <span className="text-base font-bold tracking-tight">SynapseFlow</span>
+        <span className="text-[11px] text-slate-200 truncate max-w-[240px]">{workflowName || 'Untitled Workflow'}</span>
+        <span className={`text-[10px] px-1.5 py-0.5 rounded border ${isRunning ? 'text-emerald-300 border-emerald-600/50 bg-emerald-500/10' : 'text-slate-300 border-slate-700 bg-slate-900'}`}>
+          {isRunning ? 'Running' : isReview ? 'Review' : 'Ready'}
+        </span>
+        {isReview && activeExecutionId && (
+          <span className="text-[10px] text-cyan-200 bg-cyan-500/15 border border-cyan-500/30 px-1.5 py-0.5 rounded font-mono">
+            {activeExecutionId.slice(0, 12)}
+          </span>
+        )}
       </div>
 
-      <div className="flex items-center bg-slate-900 border border-slate-700 rounded-md p-0.5">
+      <div className="ml-auto flex items-center bg-slate-900 border border-slate-700 rounded-md p-0.5">
         <button
           onClick={onEnterBuilder}
           className={`px-3 py-1 text-xs rounded transition-colors ${
             !isReview ? 'bg-slate-200 text-slate-900' : 'text-slate-300 hover:bg-slate-800'
           }`}
         >
-          Builder
+          Design
         </button>
         <button
           onClick={onEnterReview}
@@ -67,24 +75,11 @@ export function ExecutionWorkbenchHeader({
             isReview ? 'bg-blue-500 text-white' : 'text-slate-300 hover:bg-slate-800'
           }`}
         >
-          Review
+          Execution
         </button>
       </div>
 
-      {!isReview ? (
-        <input
-          type="text"
-          value={workflowName}
-          onChange={(e) => setWorkflowName(e.target.value)}
-          className="px-2 py-1.5 text-xs rounded bg-slate-900 border border-slate-700 text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-400 w-56"
-        />
-      ) : (
-        <div className="text-xs px-2 py-1 rounded bg-blue-500/15 border border-blue-500/30 text-blue-200 font-mono">
-          {activeExecutionId ? `exec:${activeExecutionId.slice(0, 12)}` : 'review mode'}
-        </div>
-      )}
-
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 shrink-0">
         <button
           onClick={() => setShowLibrary(!showLibrary)}
           className={`px-2.5 py-1 text-xs rounded border transition-colors ${
@@ -93,21 +88,11 @@ export function ExecutionWorkbenchHeader({
               : 'border-slate-700 text-slate-200 hover:bg-slate-800'
           }`}
         >
-          Load
-        </button>
-        <button
-          onClick={() => setShowHistory(!showHistory)}
-          className={`px-2.5 py-1 text-xs rounded border transition-colors ${
-            showHistory
-              ? 'bg-slate-200 text-slate-900 border-slate-200'
-              : 'border-slate-700 text-slate-200 hover:bg-slate-800'
-          }`}
-        >
-          History
+          Load Workflow
         </button>
       </div>
 
-      <div className="ml-auto flex items-center gap-2">
+      <div className="flex items-center gap-2">
         {error && (
           <span className="text-xs text-red-200 bg-red-500/20 border border-red-500/40 px-2 py-1 rounded">
             {error}
@@ -116,14 +101,6 @@ export function ExecutionWorkbenchHeader({
 
         {!isReview && (
           <>
-            <span className="text-[11px] text-slate-400">{nodesCount} node{nodesCount === 1 ? '' : 's'}</span>
-            <button
-              onClick={onSave}
-              disabled={isRunning || nodesCount === 0}
-              className="px-2.5 py-1 text-xs rounded border border-slate-700 text-slate-200 hover:bg-slate-800 disabled:opacity-40"
-            >
-              Save
-            </button>
             <button
               onClick={onClear}
               disabled={isRunning || nodesCount === 0}
@@ -134,7 +111,7 @@ export function ExecutionWorkbenchHeader({
             <button
               onClick={onRun}
               disabled={isRunning || nodesCount === 0}
-              className="px-3 py-1 text-xs rounded bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-40"
+              className="px-3 py-1 text-xs rounded bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-40"
             >
               {isRunning ? 'Running...' : 'Run'}
             </button>
@@ -146,9 +123,28 @@ export function ExecutionWorkbenchHeader({
             onClick={onBackToBuilder}
             className="px-2.5 py-1 text-xs rounded border border-slate-700 text-slate-200 hover:bg-slate-800"
           >
-            Back to Builder
+            Back to Design
           </button>
         )}
+
+        <button
+          onClick={onSave}
+          disabled={isRunning || nodesCount === 0}
+          className="px-2.5 py-1 text-xs rounded border border-slate-700 text-slate-200 hover:bg-slate-800 disabled:opacity-40"
+        >
+          Export Workflow Spec
+        </button>
+
+        <button
+          onClick={() => setShowHistory(!showHistory)}
+          className={`px-2.5 py-1 text-xs rounded border transition-colors ${
+            showHistory
+              ? 'bg-slate-200 text-slate-900 border-slate-200'
+              : 'border-slate-700 text-slate-200 hover:bg-slate-800'
+          }`}
+        >
+          History
+        </button>
 
         <div className="flex items-center rounded border border-slate-700 overflow-hidden">
           <button
@@ -168,6 +164,15 @@ export function ExecutionWorkbenchHeader({
             Workbench
           </button>
         </div>
+
+        {!isReview && (
+          <input
+            type="text"
+            value={workflowName}
+            onChange={(e) => setWorkflowName(e.target.value)}
+            className="px-2 py-1.5 text-xs rounded bg-slate-900 border border-slate-700 text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-400 w-48"
+          />
+        )}
 
         <button
           onClick={toggleTheme}
