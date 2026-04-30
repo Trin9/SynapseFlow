@@ -93,7 +93,17 @@ export function WorkbenchLayout() {
 
         <div className="flex-1 min-w-0 flex flex-col">
           {isReview && activeExecutionId && <EpisodeOverviewStrip executionId={activeExecutionId} />}
+          {isReview && !activeExecutionId && (
+            <div className="h-16 border-b bg-card px-4 py-2 flex items-center text-sm text-muted-foreground">
+              Loading focused episode context...
+            </div>
+          )}
           {isReview && activeExecutionId && <ExecutionNarrativeBanner executionId={activeExecutionId} />}
+          {isReview && !activeExecutionId && (
+            <div className="h-12 border-b bg-card px-4 py-2 flex items-center text-xs text-muted-foreground">
+              Preparing execution narrative and process trace anchors...
+            </div>
+          )}
           <div className="flex-1 min-h-0">
             <Canvas />
           </div>
