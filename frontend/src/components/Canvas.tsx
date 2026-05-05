@@ -119,7 +119,7 @@ export function Canvas() {
     return orderedEpisodeSummaries.map((sv, idx) => ({
       id: `episode-${sv.episode_id}`,
       type: 'episodeOverviewNode',
-      position: { x: 100 + idx * 310, y: 120 },
+      position: { x: 80 + idx * 400, y: 100 },
       data: {
         label: sv.label,
         nodeType: 'llm',
