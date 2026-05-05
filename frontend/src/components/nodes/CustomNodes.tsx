@@ -239,11 +239,11 @@ function EpisodeOverviewNodeBase({ data, selected }: NodeProps<FlowNode>) {
       <Handle type="target" position={Position.Left} className="!h-3 !w-3 !border-zinc-500 !bg-zinc-600" />
       <div
         className={cn(
-          'relative w-[340px] rounded-xl border-2 border-dashed p-4 backdrop-blur-sm transition-all duration-200',
-          'bg-[#0d1117]/90 text-zinc-100',
+          'relative w-[340px] rounded-xl border-2 p-4 backdrop-blur-sm transition-all duration-200',
+          'bg-[#0d1117]/95 text-zinc-100',
           statusBorderColor(status),
-          selected && 'ring-2 ring-cyan-500/50 ring-offset-2 ring-offset-[#0a0e17]',
-          'shadow-lg shadow-cyan-500/5'
+          selected && 'ring-2 ring-cyan-500/60 ring-offset-2 ring-offset-[#0a0e17]',
+          'shadow-xl shadow-black/50'
         )}
       >
         {/* Header row: title + verdict badge */}
