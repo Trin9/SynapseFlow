@@ -311,9 +311,9 @@ export function ExecutionHistory() {
   useEffect(() => { void refresh() }, [refresh])
 
   return (
-    <div className="w-96 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex flex-col overflow-hidden shrink-0">
+    <div className="flex flex-col h-full bg-background overflow-hidden">
       {/* Header */}
-      <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between shrink-0">
+      <div className="px-4 py-2 border-b border-border flex items-center justify-between shrink-0">
         <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Execution History</span>
         <button
           onClick={refresh}
