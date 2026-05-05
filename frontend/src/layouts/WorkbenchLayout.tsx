@@ -7,6 +7,7 @@ import { Sidebar } from '@/components/Sidebar'
 import { ConfigPanel } from '@/components/ConfigPanel'
 import { ExecutionHistory } from '@/components/ExecutionHistory'
 import { WorkflowLibrary } from '@/components/library/WorkflowLibrary'
+import { ForensicDossierDrawer } from '@/components/dossier/ForensicDossierDrawer'
 import { listExecutionSummaries, listExecutionSummariesByDAG } from '@/api/episodes'
 import { useGraphStore } from '@/hooks/useGraphStore'
 import { EpisodeOverviewStrip } from '@/components/execution/EpisodeOverviewCard'
@@ -19,6 +20,7 @@ import { Badge } from '@/components/ui/badge'
 export function WorkbenchLayout() {
   const appMode = useGraphStore((s) => s.appMode)
   const activeExecutionId = useGraphStore((s) => s.activeExecutionId)
+  const selectedEpisode = useGraphStore((s) => s.selectedEpisode)
   const showHistory = useGraphStore((s) => s.showHistory)
   const setShowHistory = useGraphStore((s) => s.setShowHistory)
   const showLibrary = useGraphStore((s) => s.showLibrary)
@@ -169,6 +171,10 @@ export function WorkbenchLayout() {
               </div>
             </motion.div>
           )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {selectedEpisode && <ForensicDossierDrawer />}
         </AnimatePresence>
       </div>
     </div>
