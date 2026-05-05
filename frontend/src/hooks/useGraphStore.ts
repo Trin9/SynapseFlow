@@ -181,6 +181,9 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       showHistory: true,
       showLibrary: false,
       selectedNodeId: null,
+      // B2: close any open dossier from a previous execution so it doesn't show stale data.
+      selectedEpisode: null,
+      replayPercent: 100,
     })
   },
 
