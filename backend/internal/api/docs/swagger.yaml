@@ -1,0 +1,1327 @@
+definitions:
+  api.apiError:
+    properties:
+      code:
+        type: string
+      details: {}
+      error:
+        type: string
+    type: object
+  api.deleteDAGResponse:
+    properties:
+      message:
+        description: Deletion result message.
+        type: string
+    type: object
+  api.episodesResponse:
+    properties:
+      episodes:
+        description: Episode items.
+        items:
+          $ref: '#/definitions/models.Episode'
+        type: array
+    type: object
+  api.healthDepsResponse:
+    properties:
+      db:
+        description: Database health status.
+        type: string
+      mcp:
+        description: MCP manager health status.
+        type: string
+    type: object
+  api.healthResponse:
+    properties:
+      deps:
+        allOf:
+        - $ref: '#/definitions/api.healthDepsResponse'
+        description: Dependency health statuses.
+      service:
+        description: Service name.
+        type: string
+      status:
+        description: Overall service status.
+        type: string
+      version:
+        description: Service version.
+        type: string
+    type: object
+  api.issueTokenRequest:
+    properties:
+      api_key:
+        description: API key used to exchange for JWT; required.
+        type: string
+    required:
+    - api_key
+    type: object
+  api.issueTokenResponse:
+    properties:
+      expires_in:
+        description: Token TTL in seconds.
+        type: integer
+      role:
+        description: Role associated with the API key identity.
+        type: string
+      subject:
+        description: Subject associated with the API key identity.
+        type: string
+      token:
+        description: Signed JWT token.
+        type: string
+    type: object
+  api.liveResponse:
+    properties:
+      status:
+        description: Process liveness status.
+        type: string
+    type: object
+  api.resumeExecutionRequest:
+    properties:
+      action:
+        description: Human intervention action; defaults to "resumed".
+        type: string
+      actor:
+        description: Human actor who resumes execution; defaults to "operator".
+        type: string
+      detail:
+        description: Optional detail for the resume operation.
+        type: string
+    type: object
+  api.reviewActionResponse:
+    properties:
+      ok:
+        description: Whether the review action was recorded successfully.
+        type: boolean
+    type: object
+  api.runExecutionResponse:
+    properties:
+      execution_id:
+        description: Execution identifier.
+        type: string
+      status:
+        allOf:
+        - $ref: '#/definitions/models.ExecutionStatus'
+        description: Current execution status.
+    type: object
+  models.ActionContext:
+    properties:
+      action_input:
+        additionalProperties: true
+        type: object
+      action_name:
+        type: string
+      action_output:
+        additionalProperties: true
+        type: object
+      action_type:
+        description: browser | api | script | mcp_tool
+        type: string
+    type: object
+  models.DAGConfig:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      edges:
+        items:
+          $ref: '#/definitions/models.Edge'
+        type: array
+      id:
+        type: string
+      metadata:
+        additionalProperties:
+          type: string
+        type: object
+      name:
+        type: string
+      nodes:
+        items:
+          $ref: '#/definitions/models.Node'
+        type: array
+      updated_at:
+        type: string
+    type: object
+  models.Edge:
+    properties:
+      condition:
+        description: JSON path expression for conditional routing
+        type: string
+      from:
+        type: string
+      to:
+        type: string
+    type: object
+  models.Episode:
+    properties:
+      action_context:
+        allOf:
+        - $ref: '#/definitions/models.ActionContext'
+        description: Type-specific context (only one of these should be non-nil).
+      audit_trail:
+        description: Audit / correction trail.
+        items:
+          $ref: '#/definitions/models.EpisodeAuditEntry'
+        type: array
+      concluded_at:
+        description: set when status transitions to converged/escalated
+        type: string
+      created_at:
+        type: string
+      episode_type:
+        $ref: '#/definitions/models.EpisodeType'
+      evidence:
+        items:
+          $ref: '#/definitions/models.EpisodeEvidence'
+        type: array
+      exec_id:
+        type: string
+      handles:
+        description: Core evidence fields.
+        items:
+          $ref: '#/definitions/models.EpisodeHandle'
+        type: array
+      human_interventions:
+        description: v1 spec structured audit
+        items:
+          $ref: '#/definitions/models.HumanIntervention'
+        type: array
+      id:
+        type: string
+      investigation_context:
+        $ref: '#/definitions/models.InvestigationContext'
+      loop_guard:
+        $ref: '#/definitions/models.EpisodeLoopGuard'
+      memory_extraction:
+        allOf:
+        - $ref: '#/definitions/models.EpisodeMemoryExtraction'
+        description: Memory extraction trigger state.
+      parent_episode_id:
+        description: reserved for Sprint 11 nesting
+        type: string
+      schema_version:
+        description: Timestamps.
+        type: integer
+      status:
+        allOf:
+        - $ref: '#/definitions/models.EpisodeStatus'
+        description: pending → in_progress → converged | escalated | failed
+      trigger:
+        allOf:
+        - $ref: '#/definitions/models.EpisodeTrigger'
+        description: Trigger source (how/why the Episode was created).
+      updated_at:
+        type: string
+      verdict:
+        $ref: '#/definitions/models.EpisodeVerdict'
+    type: object
+  models.EpisodeAuditEntry:
+    properties:
+      actor:
+        type: string
+      field_modified:
+        type: string
+      modified_at:
+        type: string
+      new_value: {}
+      node_id:
+        type: string
+      old_value: {}
+    type: object
+  models.EpisodeConfidence:
+    enum:
+    - high
+    - medium
+    - low
+    type: string
+    x-enum-varnames:
+    - EpisodeConfidenceHigh
+    - EpisodeConfidenceMedium
+    - EpisodeConfidenceLow
+  models.EpisodeEvidence:
+    properties:
+      collected_at:
+        type: string
+      collector_spec:
+        allOf:
+        - $ref: '#/definitions/models.EvidenceCollectorSpec'
+        description: |-
+          CollectorSpec records exactly how this evidence was collected (query params,
+          command, etc.).  Populated by Hard Nodes only; nil for Soft/Human nodes.
+      content:
+        description: small payloads only
+        type: string
+      content_ref:
+        description: '"artifact://{exec_id}/{ev_id}"'
+        type: string
+      id:
+        type: string
+      label:
+        type: string
+      node_id:
+        type: string
+      node_type:
+        $ref: '#/definitions/models.NodeType'
+      type:
+        $ref: '#/definitions/models.EpisodeEvidenceType'
+    type: object
+  models.EpisodeEvidenceType:
+    enum:
+    - fact
+    - inference
+    - human_correction
+    type: string
+    x-enum-comments:
+      EvidenceTypeFact: written by Hard Node
+      EvidenceTypeHumanCorrection: written by Human Node
+      EvidenceTypeInference: written by Soft Node
+    x-enum-descriptions:
+    - written by Hard Node
+    - written by Soft Node
+    - written by Human Node
+    x-enum-varnames:
+    - EvidenceTypeFact
+    - EvidenceTypeInference
+    - EvidenceTypeHumanCorrection
+  models.EpisodeHandle:
+    properties:
+      extracted_at:
+        description: ISO 8601
+        type: string
+      source:
+        description: node ID that extracted this handle
+        type: string
+      type:
+        $ref: '#/definitions/models.EpisodeHandleType'
+      value:
+        type: string
+    type: object
+  models.EpisodeHandleType:
+    enum:
+    - request_id
+    - trace_id
+    - order_id
+    - session_id
+    - git_ref
+    - deploy_revision
+    - file_location
+    - pod_name
+    - custom
+    type: string
+    x-enum-varnames:
+    - HandleTypeRequestID
+    - HandleTypeTraceID
+    - HandleTypeOrderID
+    - HandleTypeSessionID
+    - HandleTypeGitRef
+    - HandleTypeDeployRev
+    - HandleTypeFileLocation
+    - HandleTypePodName
+    - HandleTypeCustom
+  models.EpisodeLoopGuard:
+    properties:
+      attempted_actions:
+        items:
+          type: string
+        type: array
+      current_iteration:
+        type: integer
+      max_iterations:
+        type: integer
+    type: object
+  models.EpisodeMemoryExtraction:
+    properties:
+      status:
+        description: pending | completed | failed
+        type: string
+      trigger_by:
+        description: auto_high_confidence | human_confirmed
+        type: string
+      triggered:
+        type: boolean
+    type: object
+  models.EpisodeResult:
+    enum:
+    - pass
+    - fail
+    - inconclusive
+    type: string
+    x-enum-varnames:
+    - EpisodeResultPass
+    - EpisodeResultFail
+    - EpisodeResultInconclusive
+  models.EpisodeStatus:
+    enum:
+    - pending
+    - in_progress
+    - converged
+    - escalated
+    - failed
+    type: string
+    x-enum-varnames:
+    - EpisodeStatusPending
+    - EpisodeStatusInProgress
+    - EpisodeStatusConverged
+    - EpisodeStatusEscalated
+    - EpisodeStatusFailed
+  models.EpisodeTrigger:
+    properties:
+      payload:
+        additionalProperties: true
+        type: object
+      type:
+        $ref: '#/definitions/models.EpisodeTriggerType'
+    type: object
+  models.EpisodeTriggerType:
+    enum:
+    - alert
+    - webhook
+    - manual
+    - scheduled
+    type: string
+    x-enum-varnames:
+    - EpisodeTriggerAlert
+    - EpisodeTriggerWebhook
+    - EpisodeTriggerManual
+    - EpisodeTriggerScheduled
+  models.EpisodeType:
+    enum:
+    - action_verification
+    - investigation_step
+    type: string
+    x-enum-varnames:
+    - EpisodeTypeActionVerification
+    - EpisodeTypeInvestigationStep
+  models.EpisodeVerdict:
+    properties:
+      causal_chain:
+        items:
+          type: string
+        type: array
+      conclusion:
+        type: string
+      confidence:
+        allOf:
+        - $ref: '#/definitions/models.EpisodeConfidence'
+        description: high | medium | low
+      decided_at:
+        type: string
+      decided_by:
+        description: node ID
+        type: string
+      gaps:
+        items:
+          type: string
+        type: array
+      recommendations:
+        items:
+          type: string
+        type: array
+      result:
+        allOf:
+        - $ref: '#/definitions/models.EpisodeResult'
+        description: pass | fail | inconclusive
+    type: object
+  models.EvidenceCollectorSpec:
+    properties:
+      collector_type:
+        description: |-
+          CollectorType classifies the collection mechanism.
+          Known values: "script" | "log_query" | "db_query" | "api_call" | "code_search"
+        type: string
+      params:
+        additionalProperties: true
+        description: |-
+          Params holds structured, human-readable query parameters.
+          Examples:
+            log_query  → {"deployment": "checkoutservice", "tail": 120, "keyword": "ORD-001"}
+            db_query   → {"sql": "SELECT * FROM cart_order WHERE order_id = 'ORD-001'", "db": "orders"}
+            api_call   → {"url": "https://…", "method": "GET"}
+        type: object
+      raw_command:
+        description: |-
+          RawCommand is the fully-resolved shell command for script-type collectors.
+          All {{template}} placeholders have already been substituted.
+        type: string
+    type: object
+  models.ExecutionStatus:
+    enum:
+    - pending
+    - running
+    - completed
+    - failed
+    - timeout
+    - suspended
+    type: string
+    x-enum-comments:
+      StatusSuspended: waiting for human approval
+    x-enum-descriptions:
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+    - waiting for human approval
+    x-enum-varnames:
+    - StatusPending
+    - StatusRunning
+    - StatusCompleted
+    - StatusFailed
+    - StatusTimeout
+    - StatusSuspended
+  models.HumanIntervention:
+    properties:
+      action:
+        $ref: '#/definitions/models.HumanInterventionAction'
+      actor:
+        type: string
+      detail:
+        type: string
+      node_id:
+        type: string
+      timestamp:
+        type: string
+    type: object
+  models.HumanInterventionAction:
+    enum:
+    - state_override
+    - evidence_marked_invalid
+    - handle_injected
+    - hypothesis_corrected
+    - review_requested
+    - resumed
+    - aborted
+    type: string
+    x-enum-comments:
+      HumanActionSuspended: execution paused, awaiting review
+    x-enum-descriptions:
+    - ""
+    - ""
+    - ""
+    - ""
+    - execution paused, awaiting review
+    - ""
+    - ""
+    x-enum-varnames:
+    - HumanActionStateOverride
+    - HumanActionEvidenceMarkedInvalid
+    - HumanActionHandleInjected
+    - HumanActionHypothesisCorrected
+    - HumanActionSuspended
+    - HumanActionResumed
+    - HumanActionAborted
+  models.InvestigationContext:
+    properties:
+      hypothesis:
+        type: string
+      known_signals:
+        items:
+          type: string
+        type: array
+      retrieval_plan:
+        type: string
+    type: object
+  models.Node:
+    properties:
+      action:
+        description: bash command, LLM prompt template, MCP tool name, etc.
+        type: string
+      config:
+        additionalProperties: true
+        description: additional per-type configuration
+        type: object
+      id:
+        type: string
+      name:
+        type: string
+      type:
+        $ref: '#/definitions/models.NodeType'
+    type: object
+  models.NodeType:
+    enum:
+    - script
+    - llm
+    - mcp
+    - human
+    - router
+    - web_interaction
+    type: string
+    x-enum-varnames:
+    - NodeTypeScript
+    - NodeTypeLLM
+    - NodeTypeMCP
+    - NodeTypeHuman
+    - NodeTypeRouter
+    - NodeTypeWebInteraction
+info:
+  contact: {}
+paths:
+  /api/v1/audit:
+    get:
+      description: Returns the audit trail entries.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Audit entry list
+          schema:
+            items:
+              type: object
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.apiError'
+      summary: List Audit Entries
+      tags:
+      - Audit
+  /api/v1/auth/token:
+    post:
+      consumes:
+      - application/json
+      description: Exchanges a valid API key for a signed JWT.
+      parameters:
+      - description: Issue token request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.issueTokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.issueTokenResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.apiError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.apiError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.apiError'
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/api.apiError'
+      summary: Issue Token
+      tags:
+      - Auth
+  /api/v1/dags:
+    get:
+      description: Returns all DAG configurations.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: DAG list
+          schema:
+            items:
+              type: object
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.apiError'
+      summary: List DAGs
+      tags:
+      - DAG
+    post:
+      consumes:
+      - application/json
+      description: Creates a new DAG configuration.
+      parameters:
+      - description: DAG configuration
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.DAGConfig'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created DAG
+          schema:
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.apiError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.apiError'
+      summary: Create DAG
+      tags:
+      - DAG
+  /api/v1/dags/{id}:
+    delete:
+      description: Deletes a DAG configuration by ID.
+      parameters:
+      - description: DAG ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.deleteDAGResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.apiError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.apiError'
+      summary: Delete DAG
+      tags:
+      - DAG
+    get:
+      description: Returns a DAG configuration by ID.
+      parameters:
+      - description: DAG ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: DAG
+          schema:
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.apiError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.apiError'
+      summary: Get DAG
+      tags:
+      - DAG
+    put:
+      consumes:
+      - application/json
+      description: Updates an existing DAG configuration.
+      parameters:
+      - description: DAG ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: DAG configuration
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.DAGConfig'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Updated DAG
+          schema:
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.apiError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.apiError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.apiError'
+      summary: Update DAG
+      tags:
+      - DAG
+  /api/v1/dags/{id}/run:
+    post:
+      description: Starts execution for a saved DAG.
+      parameters:
+      - description: DAG ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/api.runExecutionResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.apiError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.apiError'
+      summary: Run DAG
+      tags:
+      - Execution
+  /api/v1/episodes/{id}:
+    get:
+      description: Returns a single episode by ID.
+      parameters:
+      - description: Episode ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Episode
+          schema:
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.apiError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.apiError'
+      summary: Get Episode
+      tags:
+      - Episodes
+  /api/v1/executions:
+    get:
+      description: Returns executions with optional filters.
+      parameters:
+      - description: Set to summary for summary view
+        in: query
+        name: view
+        type: string
+      - description: Filter by DAG ID
+        in: query
+        name: dag_id
+        type: string
+      - description: Filter by execution status
+        in: query
+        name: status
+        type: string
+      - description: Pagination limit (for dag_id filter)
+        in: query
+        name: limit
+        type: integer
+      - description: Pagination offset (for dag_id filter)
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Execution list
+          schema:
+            items:
+              type: object
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.apiError'
+      summary: List Executions
+      tags:
+      - Execution
+  /api/v1/executions/{id}:
+    get:
+      description: Returns execution details by ID.
+      parameters:
+      - description: Execution ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Execution
+          schema:
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.apiError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.apiError'
+      summary: Get Execution
+      tags:
+      - Execution
+  /api/v1/executions/{id}/comparison-targets/{historical_id}:
+    get:
+      description: Compares two executions and returns a summary.
+      parameters:
+      - description: Current execution ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Historical execution ID
+        in: path
+        name: historical_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Comparison summary
+          schema:
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.apiError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.apiError'
+      summary: Get Comparison Target
+      tags:
+      - Workspace
+  /api/v1/executions/{id}/episodes:
+    get:
+      description: Returns all episodes for an execution; supports summary view.
+      parameters:
+      - description: Execution ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Set to summary for summary view
+        in: query
+        name: view
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.episodesResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.apiError'
+      summary: List Episodes
+      tags:
+      - Episodes
+  /api/v1/executions/{id}/episodes/{episode_id}/dossier:
+    get:
+      description: Returns full dossier for a single episode.
+      parameters:
+      - description: Execution ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Episode ID
+        in: path
+        name: episode_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Episode dossier
+          schema:
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.apiError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.apiError'
+      summary: Get Episode Dossier
+      tags:
+      - Workspace
+  /api/v1/executions/{id}/episodes/{episode_id}/memory-recalls:
+    get:
+      description: Returns memory recall items for a single episode.
+      parameters:
+      - description: Execution ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Episode ID
+        in: path
+        name: episode_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Memory recall list
+          schema:
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.apiError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.apiError'
+      summary: Get Episode Memory Recalls
+      tags:
+      - Workspace
+  /api/v1/executions/{id}/episodes/{episode_id}/replay:
+    get:
+      description: Returns replay slice view for a single episode.
+      parameters:
+      - description: Execution ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Episode ID
+        in: path
+        name: episode_id
+        required: true
+        type: string
+      - description: Replay percentage (0-100)
+        in: query
+        name: percent
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Replay slice view
+          schema:
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.apiError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.apiError'
+      summary: Get Episode Replay
+      tags:
+      - Workspace
+  /api/v1/executions/{id}/nodes:
+    get:
+      description: Returns node-level results for one execution.
+      parameters:
+      - description: Execution ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Execution node results
+          schema:
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.apiError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.apiError'
+      summary: Get Execution Nodes
+      tags:
+      - Execution
+  /api/v1/executions/{id}/resume:
+    post:
+      consumes:
+      - application/json
+      description: Resumes a suspended execution.
+      parameters:
+      - description: Execution ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Optional human intervention context
+        in: body
+        name: request
+        schema:
+          $ref: '#/definitions/api.resumeExecutionRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/api.runExecutionResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.apiError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/api.apiError'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/api.apiError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.apiError'
+      summary: Resume Execution
+      tags:
+      - Execution
+  /api/v1/executions/{id}/review-actions:
+    post:
+      consumes:
+      - application/json
+      description: Records a human review decision on an execution.
+      parameters:
+      - description: Execution ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Review action request
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.reviewActionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.apiError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.apiError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.apiError'
+      summary: Post Review Action
+      tags:
+      - Workspace
+  /api/v1/executions/{id}/review-state:
+    get:
+      description: Returns aggregate human-review state for an execution.
+      parameters:
+      - description: Execution ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Review state
+          schema:
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.apiError'
+      summary: Get Review State
+      tags:
+      - Workspace
+  /api/v1/executions/{id}/summary:
+    get:
+      description: Returns a high-level summary view of one execution.
+      parameters:
+      - description: Execution ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Execution summary
+          schema:
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.apiError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.apiError'
+      summary: Get Execution Summary
+      tags:
+      - Workspace
+  /api/v1/executions/{id}/trigger-context:
+    get:
+      description: Returns trigger context view for an execution.
+      parameters:
+      - description: Execution ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Trigger context
+          schema:
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.apiError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.apiError'
+      summary: Get Trigger Context
+      tags:
+      - Workspace
+  /api/v1/experiences:
+    get:
+      description: Returns stored memory experiences.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Experience list
+          schema:
+            items:
+              type: object
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.apiError'
+      summary: List Experiences
+      tags:
+      - Memory
+  /api/v1/run:
+    post:
+      consumes:
+      - application/json
+      description: Accepts a full DAG configuration and executes it immediately.
+      parameters:
+      - description: DAG configuration
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/api.runExecutionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.apiError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.apiError'
+      summary: Run Inline DAG
+      tags:
+      - Execution
+  /api/v1/tools:
+    get:
+      description: Returns all available MCP tools.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: MCP tool list
+          schema:
+            items:
+              type: object
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.apiError'
+      summary: List Tools
+      tags:
+      - Tools
+  /health:
+    get:
+      description: Returns service and dependency health status.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.healthResponse'
+      summary: Health Check
+      tags:
+      - System
+  /health/live:
+    get:
+      description: Returns process liveness status.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.liveResponse'
+      summary: Live Check
+      tags:
+      - System
+  /metrics:
+    get:
+      description: Returns Prometheus metrics output.
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Prometheus metrics
+          schema:
+            type: string
+      summary: Metrics
+      tags:
+      - System
+swagger: "2.0"

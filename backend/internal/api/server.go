@@ -76,6 +76,82 @@ type apiError struct {
 	Details interface{} `json:"details,omitempty"`
 }
 
+// healthDepsResponse describes dependency health checks.
+type healthDepsResponse struct {
+	MCP string `json:"mcp"` // MCP manager health status.
+	DB  string `json:"db"`  // Database health status.
+}
+
+// healthResponse is the response payload for health check APIs.
+type healthResponse struct {
+	Status  string             `json:"status"`  // Overall service status.
+	Service string             `json:"service"` // Service name.
+	Version string             `json:"version"` // Service version.
+	Deps    healthDepsResponse `json:"deps"`    // Dependency health statuses.
+}
+
+// liveResponse is the response payload for liveness checks.
+type liveResponse struct {
+	Status string `json:"status"` // Process liveness status.
+}
+
+// issueTokenRequest is the request payload for JWT token issuance.
+type issueTokenRequest struct {
+	APIKey string `json:"api_key" binding:"required"` // API key used to exchange for JWT; required.
+}
+
+// issueTokenResponse is the response payload for JWT token issuance.
+type issueTokenResponse struct {
+	Token     string `json:"token"`      // Signed JWT token.
+	ExpiresIn int    `json:"expires_in"` // Token TTL in seconds.
+	Role      string `json:"role"`       // Role associated with the API key identity.
+	Subject   string `json:"subject"`    // Subject associated with the API key identity.
+}
+
+// deleteDAGResponse is the response payload after DAG deletion.
+type deleteDAGResponse struct {
+	Message string `json:"message"` // Deletion result message.
+}
+
+// runExecutionResponse is the response payload for starting or resuming executions.
+type runExecutionResponse struct {
+	ExecutionID string                 `json:"execution_id"` // Execution identifier.
+	Status      models.ExecutionStatus `json:"status"`       // Current execution status.
+}
+
+// executionNodesResponse is the polling payload for node-level execution status.
+type executionNodesResponse struct {
+	ExecutionID string                 `json:"execution_id"` // Execution identifier.
+	Status      models.ExecutionStatus `json:"status"`       // Current execution status.
+	Results     []models.NodeResult    `json:"results"`      // Node execution results.
+	Error       string                 `json:"error"`        // Execution error message when failed.
+	StartedAt   time.Time              `json:"started_at"`   // Execution start time.
+	EndedAt     *time.Time             `json:"ended_at"`     // Execution end time when terminal.
+	DurationMS  int64                  `json:"duration_ms"`  // Execution duration in milliseconds.
+}
+
+// resumeExecutionRequest is the optional request payload for execution resume.
+type resumeExecutionRequest struct {
+	Actor  string `json:"actor"`  // Human actor who resumes execution; defaults to "operator".
+	Action string `json:"action"` // Human intervention action; defaults to "resumed".
+	Detail string `json:"detail"` // Optional detail for the resume operation.
+}
+
+// episodeSummariesResponse is the list payload for episode summaries.
+type episodeSummariesResponse struct {
+	Episodes []models.EpisodeSummaryView `json:"episodes"` // Episode summary items.
+}
+
+// episodesResponse is the list payload for full episode objects.
+type episodesResponse struct {
+	Episodes []*models.Episode `json:"episodes"` // Episode items.
+}
+
+// reviewActionResponse is the response payload for review action writes.
+type reviewActionResponse struct {
+	OK bool `json:"ok"` // Whether the review action was recorded successfully.
+}
+
 type ServerOption func(*Server)
 
 func WithMCPManager(mgr mcp.ToolCaller) ServerOption {
@@ -328,6 +404,14 @@ func (s *Server) setupRouter() {
 	s.router = r
 }
 
+// List Tools returns all available MCP tools.
+// @Summary List Tools
+// @Description Returns all available MCP tools.
+// @Tags Tools
+// @Produce json
+// @Success 200 {array} object "MCP tool list"
+// @Failure 500 {object} apiError
+// @Router /api/v1/tools [get]
 func (s *Server) handleListTools(c *gin.Context) {
 	tools, err := s.mcpMgr.ListTools(c.Request.Context())
 	if err != nil {
@@ -378,6 +462,13 @@ func (s *Server) Close(ctx context.Context) error {
 // Handlers
 // ---------------------------------------------------------------------------
 
+// Health Check returns service and dependency health status.
+// @Summary Health Check
+// @Description Returns service and dependency health status.
+// @Tags System
+// @Produce json
+// @Success 200 {object} healthResponse
+// @Router /health [get]
 func (s *Server) handleHealth(c *gin.Context) {
 	// Enhanced: check MCP connectivity
 	mcpStatus := "ok"
@@ -392,21 +483,27 @@ func (s *Server) handleHealth(c *gin.Context) {
 			dbStatus = "ok"
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{
-		"status":  "ok",
-		"service": "synapse",
-		"version": "0.1.0",
-		"deps": gin.H{
-			"mcp": mcpStatus,
-			"db":  dbStatus,
+	c.JSON(http.StatusOK, healthResponse{
+		Status:  "ok",
+		Service: "synapse",
+		Version: "0.1.0",
+		Deps: healthDepsResponse{
+			MCP: mcpStatus,
+			DB:  dbStatus,
 		},
 	})
 }
 
 // handleLive is the Kubernetes liveness probe endpoint.
 // It always returns 200 as long as the process is running.
+// @Summary Live Check
+// @Description Returns process liveness status.
+// @Tags System
+// @Produce json
+// @Success 200 {object} liveResponse
+// @Router /health/live [get]
 func (s *Server) handleLive(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	c.JSON(http.StatusOK, liveResponse{Status: "ok"})
 }
 
 // handleIssueToken exchanges a valid API key for a signed JWT.
@@ -414,15 +511,25 @@ func (s *Server) handleLive(c *gin.Context) {
 // Body: {"api_key": "<key>"}
 // Response: {"token": "<jwt>", "expires_in": 3600, "role": "...", "subject": "..."}
 // Returns 501 when SYNAPSE_JWT_SECRET is not configured.
+// @Summary Issue Token
+// @Description Exchanges a valid API key for a signed JWT.
+// @Tags Auth
+// @Accept json
+// @Produce json
+// @Param request body issueTokenRequest true "Issue token request"
+// @Success 200 {object} issueTokenResponse
+// @Failure 400 {object} apiError
+// @Failure 401 {object} apiError
+// @Failure 500 {object} apiError
+// @Failure 501 {object} apiError
+// @Router /api/v1/auth/token [post]
 func (s *Server) handleIssueToken(c *gin.Context) {
 	if len(s.jwtSecret) == 0 {
 		writeError(c, http.StatusNotImplemented, "jwt_not_configured",
 			"JWT signing is not configured (set SYNAPSE_JWT_SECRET)", nil)
 		return
 	}
-	var req struct {
-		APIKey string `json:"api_key" binding:"required"`
-	}
+	var req issueTokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request body", err.Error())
 		return
@@ -438,14 +545,21 @@ func (s *Server) handleIssueToken(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, "jwt_error", "failed to issue token", err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
-		"token":      token,
-		"expires_in": int(ttl.Seconds()),
-		"role":       string(id.Role),
-		"subject":    id.Subject,
+	c.JSON(http.StatusOK, issueTokenResponse{
+		Token:     token,
+		ExpiresIn: int(ttl.Seconds()),
+		Role:      string(id.Role),
+		Subject:   id.Subject,
 	})
 }
 
+// Metrics returns Prometheus metrics output.
+// @Summary Metrics
+// @Description Returns Prometheus metrics output.
+// @Tags System
+// @Produce plain
+// @Success 200 {string} string "Prometheus metrics"
+// @Router /metrics [get]
 func (s *Server) handleMetrics(c *gin.Context) {
 	c.Header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	c.String(http.StatusOK, s.metricsCollector.RenderPrometheus())
@@ -453,6 +567,17 @@ func (s *Server) handleMetrics(c *gin.Context) {
 
 // --- DAG CRUD ---
 
+// Create DAG creates a new DAG configuration.
+// @Summary Create DAG
+// @Description Creates a new DAG configuration.
+// @Tags DAG
+// @Accept json
+// @Produce json
+// @Param request body models.DAGConfig true "DAG configuration"
+// @Success 201 {object} object "Created DAG"
+// @Failure 400 {object} apiError
+// @Failure 500 {object} apiError
+// @Router /api/v1/dags [post]
 func (s *Server) handleCreateDAG(c *gin.Context) {
 	dag, ok := getValidatedDAG(c)
 	if !ok {
@@ -472,6 +597,14 @@ func (s *Server) handleCreateDAG(c *gin.Context) {
 	c.JSON(http.StatusCreated, dag)
 }
 
+// List DAGs returns all DAG configurations.
+// @Summary List DAGs
+// @Description Returns all DAG configurations.
+// @Tags DAG
+// @Produce json
+// @Success 200 {array} object "DAG list"
+// @Failure 500 {object} apiError
+// @Router /api/v1/dags [get]
 func (s *Server) handleListDAGs(c *gin.Context) {
 	list, err := s.dags.List(c.Request.Context())
 	if err != nil {
@@ -481,6 +614,16 @@ func (s *Server) handleListDAGs(c *gin.Context) {
 	c.JSON(http.StatusOK, list)
 }
 
+// Get DAG returns a DAG configuration by ID.
+// @Summary Get DAG
+// @Description Returns a DAG configuration by ID.
+// @Tags DAG
+// @Produce json
+// @Param id path string true "DAG ID"
+// @Success 200 {object} object "DAG"
+// @Failure 404 {object} apiError
+// @Failure 500 {object} apiError
+// @Router /api/v1/dags/{id} [get]
 func (s *Server) handleGetDAG(c *gin.Context) {
 	id := c.Param("id")
 	dag, err := s.dags.Get(c.Request.Context(), id)
@@ -495,6 +638,19 @@ func (s *Server) handleGetDAG(c *gin.Context) {
 	c.JSON(http.StatusOK, dag)
 }
 
+// Update DAG updates an existing DAG configuration.
+// @Summary Update DAG
+// @Description Updates an existing DAG configuration.
+// @Tags DAG
+// @Accept json
+// @Produce json
+// @Param id path string true "DAG ID"
+// @Param request body models.DAGConfig true "DAG configuration"
+// @Success 200 {object} object "Updated DAG"
+// @Failure 400 {object} apiError
+// @Failure 404 {object} apiError
+// @Failure 500 {object} apiError
+// @Router /api/v1/dags/{id} [put]
 func (s *Server) handleUpdateDAG(c *gin.Context) {
 	id := c.Param("id")
 	if _, err := s.dags.Get(c.Request.Context(), id); errors.Is(err, store.ErrNotFound) {
@@ -520,6 +676,16 @@ func (s *Server) handleUpdateDAG(c *gin.Context) {
 	c.JSON(http.StatusOK, dag)
 }
 
+// Delete DAG deletes a DAG configuration by ID.
+// @Summary Delete DAG
+// @Description Deletes a DAG configuration by ID.
+// @Tags DAG
+// @Produce json
+// @Param id path string true "DAG ID"
+// @Success 200 {object} deleteDAGResponse
+// @Failure 404 {object} apiError
+// @Failure 500 {object} apiError
+// @Router /api/v1/dags/{id} [delete]
 func (s *Server) handleDeleteDAG(c *gin.Context) {
 	id := c.Param("id")
 	if err := s.dags.Delete(c.Request.Context(), id); errors.Is(err, store.ErrNotFound) {
@@ -529,11 +695,21 @@ func (s *Server) handleDeleteDAG(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, "dag_delete_failed", "failed to delete DAG", err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "DAG deleted"})
+	c.JSON(http.StatusOK, deleteDAGResponse{Message: "DAG deleted"})
 }
 
 // --- Execution ---
 
+// Run DAG starts execution for a saved DAG.
+// @Summary Run DAG
+// @Description Starts execution for a saved DAG.
+// @Tags Execution
+// @Produce json
+// @Param id path string true "DAG ID"
+// @Success 202 {object} runExecutionResponse
+// @Failure 404 {object} apiError
+// @Failure 500 {object} apiError
+// @Router /api/v1/dags/{id}/run [post]
 func (s *Server) handleRunDAG(c *gin.Context) {
 	id := c.Param("id")
 	dag, err := s.dags.Get(c.Request.Context(), id)
@@ -550,6 +726,16 @@ func (s *Server) handleRunDAG(c *gin.Context) {
 }
 
 // handleRunInline accepts a full DAGConfig in the request body and executes it immediately.
+// @Summary Run Inline DAG
+// @Description Accepts a full DAG configuration and executes it immediately.
+// @Tags Execution
+// @Accept json
+// @Produce json
+// @Param request body object true "DAG configuration"
+// @Success 202 {object} runExecutionResponse
+// @Failure 400 {object} apiError
+// @Failure 500 {object} apiError
+// @Router /api/v1/run [post]
 func (s *Server) handleRunInline(c *gin.Context) {
 	dag, ok := getValidatedDAG(c)
 	if !ok {
@@ -571,9 +757,9 @@ func (s *Server) runWorkflow(c *gin.Context, dag *models.DAGConfig) {
 	}
 
 	exec := s.startExecution(dag, nil, "api")
-	c.JSON(http.StatusAccepted, gin.H{
-		"execution_id": exec.ID,
-		"status":       exec.Status,
+	c.JSON(http.StatusAccepted, runExecutionResponse{
+		ExecutionID: exec.ID,
+		Status:      exec.Status,
 	})
 }
 
@@ -720,6 +906,16 @@ func (s *Server) startExecution(dag *models.DAGConfig, initialState *models.Glob
 	return exec
 }
 
+// Get Execution returns execution details by ID.
+// @Summary Get Execution
+// @Description Returns execution details by ID.
+// @Tags Execution
+// @Produce json
+// @Param id path string true "Execution ID"
+// @Success 200 {object} object "Execution"
+// @Failure 404 {object} apiError
+// @Failure 500 {object} apiError
+// @Router /api/v1/executions/{id} [get]
 func (s *Server) handleGetExecution(c *gin.Context) {
 	id := c.Param("id")
 	exec, err := s.execs.Get(c.Request.Context(), id)
@@ -735,6 +931,19 @@ func (s *Server) handleGetExecution(c *gin.Context) {
 	c.JSON(http.StatusOK, exec)
 }
 
+// List Executions returns executions with optional filters.
+// @Summary List Executions
+// @Description Returns executions with optional filters.
+// @Tags Execution
+// @Produce json
+// @Param view query string false "Set to summary for summary view"
+// @Param dag_id query string false "Filter by DAG ID"
+// @Param status query string false "Filter by execution status"
+// @Param limit query int false "Pagination limit (for dag_id filter)"
+// @Param offset query int false "Pagination offset (for dag_id filter)"
+// @Success 200 {array} object "Execution list"
+// @Failure 500 {object} apiError
+// @Router /api/v1/executions [get]
 func (s *Server) handleListExecutions(c *gin.Context) {
 	ctx := c.Request.Context()
 	viewSummary := c.Query("view") == "summary"
@@ -791,6 +1000,16 @@ func (s *Server) handleListExecutions(c *gin.Context) {
 	c.JSON(http.StatusOK, list)
 }
 
+// Get Execution Nodes returns node-level results for one execution.
+// @Summary Get Execution Nodes
+// @Description Returns node-level results for one execution.
+// @Tags Execution
+// @Produce json
+// @Param id path string true "Execution ID"
+// @Success 200 {object} object "Execution node results"
+// @Failure 404 {object} apiError
+// @Failure 500 {object} apiError
+// @Router /api/v1/executions/{id}/nodes [get]
 func (s *Server) handleGetExecutionNodes(c *gin.Context) {
 	id := c.Param("id")
 	exec, err := s.execs.Get(c.Request.Context(), id)
@@ -809,17 +1028,25 @@ func (s *Server) handleGetExecutionNodes(c *gin.Context) {
 	}
 
 	// Keep response stable for frontend polling: include status and results.
-	c.JSON(http.StatusOK, gin.H{
-		"execution_id": exec.ID,
-		"status":       exec.Status,
-		"results":      results,
-		"error":        exec.Error,
-		"started_at":   exec.StartedAt,
-		"ended_at":     exec.EndedAt,
-		"duration_ms":  exec.Duration.Milliseconds(),
+	c.JSON(http.StatusOK, executionNodesResponse{
+		ExecutionID: exec.ID,
+		Status:      exec.Status,
+		Results:     results,
+		Error:       exec.Error,
+		StartedAt:   exec.StartedAt,
+		EndedAt:     exec.EndedAt,
+		DurationMS:  exec.Duration.Milliseconds(),
 	})
 }
 
+// List Experiences returns stored memory experiences.
+// @Summary List Experiences
+// @Description Returns stored memory experiences.
+// @Tags Memory
+// @Produce json
+// @Success 200 {array} object "Experience list"
+// @Failure 500 {object} apiError
+// @Router /api/v1/experiences [get]
 func (s *Server) handleListExperiences(c *gin.Context) {
 	if s.memory == nil {
 		c.JSON(http.StatusOK, []models.Experience{})
@@ -900,15 +1127,24 @@ func cloneExecution(exec *models.Execution) *models.Execution {
 }
 
 // handleResumeExecution resumes a suspended (human-in-the-loop) execution.
+// @Summary Resume Execution
+// @Description Resumes a suspended execution.
+// @Tags Execution
+// @Accept json
+// @Produce json
+// @Param id path string true "Execution ID"
+// @Param request body resumeExecutionRequest false "Optional human intervention context"
+// @Success 202 {object} runExecutionResponse
+// @Failure 404 {object} apiError
+// @Failure 409 {object} apiError
+// @Failure 422 {object} apiError
+// @Failure 500 {object} apiError
+// @Router /api/v1/executions/{id}/resume [post]
 func (s *Server) handleResumeExecution(c *gin.Context) {
 	id := c.Param("id")
 
 	// Optional body: actor/action/detail for HumanIntervention recording.
-	var resumeBody struct {
-		Actor  string `json:"actor"`
-		Action string `json:"action"`
-		Detail string `json:"detail"`
-	}
+	var resumeBody resumeExecutionRequest
 	// Ignore parse error — body is fully optional.
 	_ = c.ShouldBindJSON(&resumeBody)
 
@@ -1057,13 +1293,20 @@ func (s *Server) handleResumeExecution(c *gin.Context) {
 		}
 	}()
 
-	c.JSON(http.StatusAccepted, gin.H{
-		"execution_id": id,
-		"status":       models.StatusRunning,
+	c.JSON(http.StatusAccepted, runExecutionResponse{
+		ExecutionID: id,
+		Status:      models.StatusRunning,
 	})
 }
 
 // handleListAudit returns the in-memory audit trail (admin only).
+// @Summary List Audit Entries
+// @Description Returns the audit trail entries.
+// @Tags Audit
+// @Produce json
+// @Success 200 {array} object "Audit entry list"
+// @Failure 500 {object} apiError
+// @Router /api/v1/audit [get]
 func (s *Server) handleListAudit(c *gin.Context) {
 	entries, err := s.audits.List(c.Request.Context())
 	if err != nil {
@@ -1220,6 +1463,15 @@ func executionDetailsURL(dag *models.DAGConfig, exec *models.Execution) string {
 //	GET /api/v1/executions/:id/episodes[?view=summary]
 //
 // When ?view=summary is set, returns EpisodeSummaryView list instead of raw Episodes.
+// @Summary List Episodes
+// @Description Returns all episodes for an execution; supports summary view.
+// @Tags Episodes
+// @Produce json
+// @Param id path string true "Execution ID"
+// @Param view query string false "Set to summary for summary view"
+// @Success 200 {object} episodesResponse
+// @Failure 500 {object} apiError
+// @Router /api/v1/executions/{id}/episodes [get]
 func (s *Server) handleListEpisodes(c *gin.Context) {
 	execID := c.Param("id")
 	ctx := c.Request.Context()
@@ -1232,7 +1484,7 @@ func (s *Server) handleListEpisodes(c *gin.Context) {
 		if summaries == nil {
 			summaries = []models.EpisodeSummaryView{}
 		}
-		c.JSON(http.StatusOK, gin.H{"episodes": summaries})
+		c.JSON(http.StatusOK, episodeSummariesResponse{Episodes: summaries})
 		return
 	}
 	episodes, err := s.episodes.ListByExecution(ctx, execID)
@@ -1243,12 +1495,22 @@ func (s *Server) handleListEpisodes(c *gin.Context) {
 	if episodes == nil {
 		episodes = []*models.Episode{}
 	}
-	c.JSON(http.StatusOK, gin.H{"episodes": episodes})
+	c.JSON(http.StatusOK, episodesResponse{Episodes: episodes})
 }
 
 // handleGetEpisode returns a single episode by ID.
 //
 //	GET /api/v1/episodes/:id
+//
+// @Summary Get Episode
+// @Description Returns a single episode by ID.
+// @Tags Episodes
+// @Produce json
+// @Param id path string true "Episode ID"
+// @Success 200 {object} object "Episode"
+// @Failure 404 {object} apiError
+// @Failure 500 {object} apiError
+// @Router /api/v1/episodes/{id} [get]
 func (s *Server) handleGetEpisode(c *gin.Context) {
 	id := c.Param("id")
 	ep, err := s.episodes.Get(c.Request.Context(), id)
@@ -1270,6 +1532,16 @@ func (s *Server) handleGetEpisode(c *gin.Context) {
 // handleGetExecutionSummary returns a high-level summary view of a single execution.
 //
 //	GET /api/v1/executions/:id/summary
+//
+// @Summary Get Execution Summary
+// @Description Returns a high-level summary view of one execution.
+// @Tags Workspace
+// @Produce json
+// @Param id path string true "Execution ID"
+// @Success 200 {object} object "Execution summary"
+// @Failure 404 {object} apiError
+// @Failure 500 {object} apiError
+// @Router /api/v1/executions/{id}/summary [get]
 func (s *Server) handleGetExecutionSummary(c *gin.Context) {
 	id := c.Param("id")
 	summary, err := s.execs.GetExecutionSummary(c.Request.Context(), id)
@@ -1288,6 +1560,16 @@ func (s *Server) handleGetExecutionSummary(c *gin.Context) {
 // built from the first episode's trigger data.
 //
 //	GET /api/v1/executions/:id/trigger-context
+//
+// @Summary Get Trigger Context
+// @Description Returns trigger context view for an execution.
+// @Tags Workspace
+// @Produce json
+// @Param id path string true "Execution ID"
+// @Success 200 {object} object "Trigger context"
+// @Failure 404 {object} apiError
+// @Failure 500 {object} apiError
+// @Router /api/v1/executions/{id}/trigger-context [get]
 func (s *Server) handleGetTriggerContext(c *gin.Context) {
 	execID := c.Param("id")
 	ctx := c.Request.Context()
@@ -1312,6 +1594,15 @@ func (s *Server) handleGetTriggerContext(c *gin.Context) {
 // handleGetReviewState returns the aggregate human-review state for an execution.
 //
 //	GET /api/v1/executions/:id/review-state
+//
+// @Summary Get Review State
+// @Description Returns aggregate human-review state for an execution.
+// @Tags Workspace
+// @Produce json
+// @Param id path string true "Execution ID"
+// @Success 200 {object} object "Review state"
+// @Failure 500 {object} apiError
+// @Router /api/v1/executions/{id}/review-state [get]
 func (s *Server) handleGetReviewState(c *gin.Context) {
 	execID := c.Param("id")
 	state, err := s.episodes.GetReviewStateByExecution(c.Request.Context(), execID)
@@ -1325,6 +1616,19 @@ func (s *Server) handleGetReviewState(c *gin.Context) {
 // handlePostReviewAction records a human review decision on an execution.
 //
 //	POST /api/v1/executions/:id/review-actions
+//
+// @Summary Post Review Action
+// @Description Records a human review decision on an execution.
+// @Tags Workspace
+// @Accept json
+// @Produce json
+// @Param id path string true "Execution ID"
+// @Param request body object true "Review action request"
+// @Success 200 {object} reviewActionResponse
+// @Failure 400 {object} apiError
+// @Failure 404 {object} apiError
+// @Failure 500 {object} apiError
+// @Router /api/v1/executions/{id}/review-actions [post]
 func (s *Server) handlePostReviewAction(c *gin.Context) {
 	execID := c.Param("id")
 	var req models.ReviewActionRequest
@@ -1340,12 +1644,24 @@ func (s *Server) handlePostReviewAction(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, "review_action_error", "failed to write review state", err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	c.JSON(http.StatusOK, reviewActionResponse{OK: true})
 }
 
 // handleGetEpisodeReplay returns a replay slice view for a single episode.
 //
 //	GET /api/v1/executions/:id/episodes/:episode_id/replay?percent=N
+//
+// @Summary Get Episode Replay
+// @Description Returns replay slice view for a single episode.
+// @Tags Workspace
+// @Produce json
+// @Param id path string true "Execution ID"
+// @Param episode_id path string true "Episode ID"
+// @Param percent query int false "Replay percentage (0-100)"
+// @Success 200 {object} object "Replay slice view"
+// @Failure 404 {object} apiError
+// @Failure 500 {object} apiError
+// @Router /api/v1/executions/{id}/episodes/{episode_id}/replay [get]
 func (s *Server) handleGetEpisodeReplay(c *gin.Context) {
 	episodeID := c.Param("episode_id")
 	ctx := c.Request.Context()
@@ -1374,6 +1690,17 @@ func (s *Server) handleGetEpisodeReplay(c *gin.Context) {
 // handleGetEpisodeDossier returns the full dossier for a single episode.
 //
 //	GET /api/v1/executions/:id/episodes/:episode_id/dossier
+//
+// @Summary Get Episode Dossier
+// @Description Returns full dossier for a single episode.
+// @Tags Workspace
+// @Produce json
+// @Param id path string true "Execution ID"
+// @Param episode_id path string true "Episode ID"
+// @Success 200 {object} object "Episode dossier"
+// @Failure 404 {object} apiError
+// @Failure 500 {object} apiError
+// @Router /api/v1/executions/{id}/episodes/{episode_id}/dossier [get]
 func (s *Server) handleGetEpisodeDossier(c *gin.Context) {
 	episodeID := c.Param("episode_id")
 	ctx := c.Request.Context()
@@ -1406,6 +1733,17 @@ func (s *Server) handleGetEpisodeDossier(c *gin.Context) {
 // of the former stub which always returned an empty slice.
 //
 //	GET /api/v1/executions/:id/episodes/:episode_id/memory-recalls
+//
+// @Summary Get Episode Memory Recalls
+// @Description Returns memory recall items for a single episode.
+// @Tags Workspace
+// @Produce json
+// @Param id path string true "Execution ID"
+// @Param episode_id path string true "Episode ID"
+// @Success 200 {object} object "Memory recall list"
+// @Failure 404 {object} apiError
+// @Failure 500 {object} apiError
+// @Router /api/v1/executions/{id}/episodes/{episode_id}/memory-recalls [get]
 func (s *Server) handleGetEpisodeMemoryRecalls(c *gin.Context) {
 	episodeID := c.Param("episode_id")
 	ctx := c.Request.Context()
@@ -1534,6 +1872,17 @@ func buildMemoryRecallsForEpisode(ctx context.Context, ep *models.Episode, expSt
 // handleGetComparisonTarget compares two executions and returns a summary.
 //
 //	GET /api/v1/executions/:id/comparison-targets/:historical_id
+//
+// @Summary Get Comparison Target
+// @Description Compares two executions and returns a summary.
+// @Tags Workspace
+// @Produce json
+// @Param id path string true "Current execution ID"
+// @Param historical_id path string true "Historical execution ID"
+// @Success 200 {object} object "Comparison summary"
+// @Failure 404 {object} apiError
+// @Failure 500 {object} apiError
+// @Router /api/v1/executions/{id}/comparison-targets/{historical_id} [get]
 func (s *Server) handleGetComparisonTarget(c *gin.Context) {
 	execID := c.Param("id")
 	historicalID := c.Param("historical_id")
