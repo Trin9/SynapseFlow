@@ -36,6 +36,7 @@ var (
 	ErrSummaryGet         = errors.New("failed to get execution summary")
 	ErrExecutionGet       = errors.New("failed to get execution")
 	ErrEpisodeList        = errors.New("failed to list episodes")
+	ErrEpisodeGet         = errors.New("failed to get episode")
 	ErrReviewStateGet     = errors.New("failed to get review state")
 	ErrReviewActionWrite  = errors.New("failed to write review state")
 	ErrEpisodeNotFound    = errors.New("episode not found")
@@ -44,6 +45,43 @@ var (
 	ErrDossierBuild       = errors.New("failed to build dossier")
 	ErrMemoryRecallSearch = errors.New("failed to search memory recalls")
 )
+
+// ListEpisodes returns all episodes for one execution.
+func (s *Service) ListEpisodes(ctx context.Context, executionID string) ([]*models.Episode, error) {
+	episodes, err := s.Episodes.ListByExecution(ctx, executionID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrEpisodeList, err)
+	}
+	if episodes == nil {
+		episodes = []*models.Episode{}
+	}
+	return episodes, nil
+}
+
+// ListEpisodeSummaries returns projected episode summaries for one execution.
+func (s *Service) ListEpisodeSummaries(ctx context.Context, executionID string) ([]workspaceView.EpisodeSummaryView, error) {
+	episodes, err := s.Episodes.ListByExecution(ctx, executionID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrEpisodeList, err)
+	}
+	summaries := make([]workspaceView.EpisodeSummaryView, len(episodes))
+	for i, ep := range episodes {
+		summaries[i] = projectionWorkspace.EpisodeToSummary(ep)
+	}
+	return summaries, nil
+}
+
+// GetEpisode returns one episode by ID.
+func (s *Service) GetEpisode(ctx context.Context, episodeID string) (*models.Episode, error) {
+	ep, err := s.Episodes.Get(ctx, episodeID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, ErrEpisodeNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrEpisodeGet, err)
+	}
+	return ep, nil
+}
 
 // GetExecutionSummary returns summary projection for one execution.
 func (s *Service) GetExecutionSummary(ctx context.Context, executionID string) (*workspaceView.ExecutionSummaryView, error) {

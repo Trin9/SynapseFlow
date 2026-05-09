@@ -25,7 +25,6 @@ import (
 	"github.com/Trin9/SynapseFlow/backend/internal/memory"
 	"github.com/Trin9/SynapseFlow/backend/internal/metrics"
 	"github.com/Trin9/SynapseFlow/backend/internal/notify"
-	projectionWorkspace "github.com/Trin9/SynapseFlow/backend/internal/projection/workspace"
 	"github.com/Trin9/SynapseFlow/backend/internal/store"
 	"github.com/Trin9/SynapseFlow/backend/pkg/logger"
 	"github.com/Trin9/SynapseFlow/backend/pkg/models"
@@ -1235,28 +1234,18 @@ func (s *Server) handleListEpisodes(c *gin.Context) {
 	execID := c.Param("id")
 	ctx := c.Request.Context()
 	if c.Query("view") == "summary" {
-		episodes, err := s.episodes.ListByExecution(ctx, execID)
+		summaries, err := s.workspaceSvc.ListEpisodeSummaries(ctx, execID)
 		if err != nil {
 			writeError(c, http.StatusInternalServerError, "episode_list_error", "failed to list episode summaries", err.Error())
 			return
 		}
-		summaries := make([]workspaceView.EpisodeSummaryView, len(episodes))
-		for i, ep := range episodes {
-			summaries[i] = projectionWorkspace.EpisodeToSummary(ep)
-		}
-		if summaries == nil {
-			summaries = []workspaceView.EpisodeSummaryView{}
-		}
 		c.JSON(http.StatusOK, episodeSummariesResponse{Episodes: summaries})
 		return
 	}
-	episodes, err := s.episodes.ListByExecution(ctx, execID)
+	episodes, err := s.workspaceSvc.ListEpisodes(ctx, execID)
 	if err != nil {
 		writeError(c, http.StatusInternalServerError, "episode_list_error", "failed to list episodes", err.Error())
 		return
-	}
-	if episodes == nil {
-		episodes = []*models.Episode{}
 	}
 	c.JSON(http.StatusOK, episodesResponse{Episodes: episodes})
 }
@@ -1276,9 +1265,9 @@ func (s *Server) handleListEpisodes(c *gin.Context) {
 // @Router /api/v1/episodes/{id} [get]
 func (s *Server) handleGetEpisode(c *gin.Context) {
 	id := c.Param("id")
-	ep, err := s.episodes.Get(c.Request.Context(), id)
+	ep, err := s.workspaceSvc.GetEpisode(c.Request.Context(), id)
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
+		if errors.Is(err, appWorkspace.ErrEpisodeNotFound) {
 			writeError(c, http.StatusNotFound, "episode_not_found", "episode not found", id)
 			return
 		}
