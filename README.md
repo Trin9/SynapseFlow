@@ -37,6 +37,7 @@ The name "Synapse" originates from biology, symbolizing the platform's role as a
 | [Product Design](./docs/PRODUCT_DESIGN.md) | Product philosophy, architecture, NFRs, competitive analysis |
 | [Implementation Plan](./docs/IMPLEMENTATION_PLAN.md) | Phased milestone plan with time estimates and acceptance criteria |
 | [Project Structure](./docs/PROJECT_STRUCTURE.md) | Directory topology and module architecture |
+| [Layered Boundary Audit (2026-05)](./docs/understand/LAYERED_ARCHITECTURE_BOUNDARY_AUDIT_2026-05.md) | As-built layering boundary closure report |
 | [Agent Design Principles](./AGENTS.md) | Hard/soft node collaboration, state machine flow, shadow memory |
 | [Design Rationale](./docs/talk&thoughts/DESIGN_RATIONALE.md) | Architectural decision records (Q&A format) |
 
