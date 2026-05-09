@@ -59,7 +59,7 @@ func (e NotSuspendedError) Error() string {
 type ResumeInput struct {
 	ExecutionID string
 	Actor       string
-	Action      string
+	Action      models.HumanInterventionAction
 	Detail      string
 }
 
@@ -271,7 +271,7 @@ func (s *Service) ResumeExecution(ctx context.Context, input ResumeInput) (*mode
 			if actor == "" {
 				actor = "operator"
 			}
-			action := models.HumanInterventionAction(input.Action)
+			action := input.Action
 			if action == "" {
 				action = models.HumanActionResumed
 			}

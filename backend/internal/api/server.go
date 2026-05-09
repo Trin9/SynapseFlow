@@ -1011,7 +1011,7 @@ func (s *Server) handleResumeExecution(c *gin.Context) {
 	exec, err := s.execService.ResumeExecution(c.Request.Context(), appExecution.ResumeInput{
 		ExecutionID: id,
 		Actor:       resumeBody.Actor,
-		Action:      resumeBody.Action,
+		Action:      models.HumanInterventionAction(resumeBody.Action),
 		Detail:      resumeBody.Detail,
 	})
 	if err != nil {
@@ -1380,6 +1380,10 @@ func (s *Server) handlePostReviewAction(c *gin.Context) {
 		return
 	}
 	if err := s.workspaceSvc.PostReviewAction(c.Request.Context(), execID, req.EpisodeID, req.Status, req.Actor, req.Note); err != nil {
+		if errors.Is(err, appWorkspace.ErrInvalidReviewState) {
+			writeError(c, http.StatusBadRequest, "invalid_request", "invalid review status", req.Status)
+			return
+		}
 		if errors.Is(err, appWorkspace.ErrExecutionNotFound) {
 			writeError(c, http.StatusNotFound, "not_found", "execution not found", nil)
 			return

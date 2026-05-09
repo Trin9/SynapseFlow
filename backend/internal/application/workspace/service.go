@@ -39,6 +39,7 @@ var (
 	ErrEpisodeGet         = errors.New("failed to get episode")
 	ErrReviewStateGet     = errors.New("failed to get review state")
 	ErrReviewActionWrite  = errors.New("failed to write review state")
+	ErrInvalidReviewState = errors.New("invalid review status")
 	ErrEpisodeNotFound    = errors.New("episode not found")
 	ErrReplayGetEpisode   = errors.New("failed to get episode")
 	ErrComparisonBuild    = errors.New("failed to build comparison")
@@ -128,9 +129,13 @@ func (s *Service) PostReviewAction(ctx context.Context, executionID, episodeID, 
 	if s.EpisodeWriter == nil {
 		return fmt.Errorf("%w: episode writer unavailable", ErrReviewActionWrite)
 	}
+	reviewStatus := domainEpisode.ReviewStatus(status)
+	if !reviewStatus.IsValid() {
+		return ErrInvalidReviewState
+	}
 	if err := s.EpisodeWriter.WriteReviewState(ctx, executionID, domainEpisode.ReviewActionInput{
 		EpisodeID: episodeID,
-		Status:    status,
+		Status:    reviewStatus,
 		Actor:     actor,
 		Note:      note,
 	}); err != nil {

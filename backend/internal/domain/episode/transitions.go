@@ -39,35 +39,26 @@ type HumanReviewDisplay struct {
 	Banner       *string
 }
 
-// ReviewMutationFromStatus maps review action status string to episode mutation policy.
-func ReviewMutationFromStatus(status string, current models.EpisodeStatus) ReviewStateMutation {
+// ReviewMutationFromStatus maps review action status to episode mutation policy.
+func ReviewMutationFromStatus(status ReviewStatus, current models.EpisodeStatus) ReviewStateMutation {
 	switch status {
-	case "approved":
+	case ReviewStatusApproved:
 		if current == models.EpisodeStatusEscalated {
 			return ReviewStateMutation{NewStatus: models.EpisodeStatusConverged, SetConcluded: true}
 		}
 		return ReviewStateMutation{}
-	case "aborted":
+	case ReviewStatusAborted:
 		return ReviewStateMutation{NewStatus: models.EpisodeStatusFailed, SetConcluded: true}
-	case "overridden":
+	case ReviewStatusOverridden:
 		return ReviewStateMutation{NewStatus: models.EpisodeStatusConverged, SetConcluded: true, ApplyConclusion: true}
 	default:
 		return ReviewStateMutation{}
 	}
 }
 
-// ReviewStatusToAction maps review request status string to intervention action.
-func ReviewStatusToAction(status string) models.HumanInterventionAction {
-	switch status {
-	case "approved":
-		return models.HumanActionResumed
-	case "aborted":
-		return models.HumanActionAborted
-	case "overridden":
-		return models.HumanActionStateOverride
-	default:
-		return models.HumanActionResumed
-	}
+// ReviewStatusToAction maps review request status to intervention action.
+func ReviewStatusToAction(status ReviewStatus) models.HumanInterventionAction {
+	return status.ToHumanAction()
 }
 
 // HumanActionLabel maps intervention action to user-facing label.
