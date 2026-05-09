@@ -7,6 +7,7 @@ import (
 
 	domainEpisode "github.com/Trin9/SynapseFlow/backend/internal/domain/episode"
 	"github.com/Trin9/SynapseFlow/backend/internal/memory"
+	projectionWorkspace "github.com/Trin9/SynapseFlow/backend/internal/projection/workspace"
 	"github.com/Trin9/SynapseFlow/backend/internal/store"
 	"github.com/Trin9/SynapseFlow/backend/pkg/models"
 )
@@ -76,11 +77,11 @@ func (s *Service) GetTriggerContext(ctx context.Context, executionID string) (mo
 
 // GetReviewState returns aggregate review-state projection for one execution.
 func (s *Service) GetReviewState(ctx context.Context, executionID string) (*models.ReviewStateView, error) {
-	state, err := s.Episodes.GetReviewStateByExecution(ctx, executionID)
+	episodes, err := s.Episodes.ListByExecution(ctx, executionID)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrReviewStateGet, err)
 	}
-	return state, nil
+	return projectionWorkspace.EpisodesToReviewState(episodes), nil
 }
 
 // PostReviewAction writes a review action for one execution.
@@ -117,7 +118,7 @@ func (s *Service) GetEpisodeReplay(ctx context.Context, episodeID string, percen
 	if err != nil {
 		return models.ReplaySliceView{}, fmt.Errorf("%w: %v", ErrReplayGetEpisode, err)
 	}
-	trace, _ := s.Episodes.ListProcessTraceByEpisode(ctx, episodeID)
+	trace := projectionWorkspace.EpisodeToProcessTrace(ep)
 	if s.BuildReplaySliceView == nil {
 		return models.ReplaySliceView{}, fmt.Errorf("%w: replay builder unavailable", ErrReplayGetEpisode)
 	}
@@ -155,7 +156,7 @@ func (s *Service) GetEpisodeDossier(ctx context.Context, episodeID string) (mode
 	if err != nil {
 		return models.EpisodeDossierView{}, fmt.Errorf("%w: %v", ErrDossierBuild, err)
 	}
-	facts, _ := s.Episodes.ListRuntimeFactsByEpisode(ctx, episodeID)
+	facts := projectionWorkspace.EpisodeToRuntimeFacts(ep)
 	recalls := []models.MemoryRecallView{}
 	if s.BuildMemoryRecalls != nil {
 		r, recallErr := s.BuildMemoryRecalls(ctx, ep, s.MemoryStore)
