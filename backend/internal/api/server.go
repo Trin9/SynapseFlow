@@ -830,12 +830,12 @@ func (s *Server) startExecution(dag *models.DAGConfig, initialState *models.Glob
 // @Router /api/v1/executions/{id} [get]
 func (s *Server) handleGetExecution(c *gin.Context) {
 	id := c.Param("id")
-	exec, err := s.execs.Get(c.Request.Context(), id)
-	if errors.Is(err, store.ErrNotFound) {
-		writeError(c, http.StatusNotFound, "not_found", "Execution not found", nil)
-		return
-	}
+	exec, err := s.execService.GetExecution(c.Request.Context(), id)
 	if err != nil {
+		if errors.Is(err, appExecution.ErrExecutionNotFound) {
+			writeError(c, http.StatusNotFound, "not_found", "Execution not found", nil)
+			return
+		}
 		writeError(c, http.StatusInternalServerError, "execution_get_failed", "failed to get execution", err.Error())
 		return
 	}
@@ -859,48 +859,21 @@ func (s *Server) handleGetExecution(c *gin.Context) {
 func (s *Server) handleListExecutions(c *gin.Context) {
 	ctx := c.Request.Context()
 	viewSummary := c.Query("view") == "summary"
+	input := appExecution.ListInput{}
 
 	// Optional filter: ?dag_id=<id>
 	if dagID := c.Query("dag_id"); dagID != "" {
+		input.DAGID = dagID
 		limitStr := c.DefaultQuery("limit", "0")
 		offsetStr := c.DefaultQuery("offset", "0")
-		limit := 0
-		offset := 0
-		fmt.Sscanf(limitStr, "%d", &limit)
-		fmt.Sscanf(offsetStr, "%d", &offset)
-		list, err := s.execs.ListByDAGID(ctx, dagID, limit, offset)
-		if err != nil {
-			writeError(c, http.StatusInternalServerError, "execution_list_failed", "failed to list executions by dag", err.Error())
-			return
-		}
-		if list == nil {
-			list = []*models.Execution{}
-		}
-		if viewSummary {
-			c.JSON(http.StatusOK, projectExecutionList(list))
-			return
-		}
-		c.JSON(http.StatusOK, list)
-		return
+		fmt.Sscanf(limitStr, "%d", &input.Limit)
+		fmt.Sscanf(offsetStr, "%d", &input.Offset)
 	}
 	// Optional filter: ?status=<status>
 	if statusStr := c.Query("status"); statusStr != "" {
-		list, err := s.execs.ListByStatus(ctx, models.ExecutionStatus(statusStr))
-		if err != nil {
-			writeError(c, http.StatusInternalServerError, "execution_list_failed", "failed to list executions by status", err.Error())
-			return
-		}
-		if list == nil {
-			list = []*models.Execution{}
-		}
-		if viewSummary {
-			c.JSON(http.StatusOK, projectExecutionList(list))
-			return
-		}
-		c.JSON(http.StatusOK, list)
-		return
+		input.Status = models.ExecutionStatus(statusStr)
 	}
-	list, err := s.execs.List(ctx)
+	list, err := s.execService.ListExecutions(ctx, input)
 	if err != nil {
 		writeError(c, http.StatusInternalServerError, "execution_list_failed", "failed to list executions", err.Error())
 		return
@@ -924,12 +897,12 @@ func (s *Server) handleListExecutions(c *gin.Context) {
 // @Router /api/v1/executions/{id}/nodes [get]
 func (s *Server) handleGetExecutionNodes(c *gin.Context) {
 	id := c.Param("id")
-	exec, err := s.execs.Get(c.Request.Context(), id)
-	if errors.Is(err, store.ErrNotFound) {
-		writeError(c, http.StatusNotFound, "not_found", "Execution not found", nil)
-		return
-	}
+	exec, err := s.execService.GetExecution(c.Request.Context(), id)
 	if err != nil {
+		if errors.Is(err, appExecution.ErrExecutionNotFound) {
+			writeError(c, http.StatusNotFound, "not_found", "Execution not found", nil)
+			return
+		}
 		writeError(c, http.StatusInternalServerError, "execution_get_failed", "failed to get execution", err.Error())
 		return
 	}

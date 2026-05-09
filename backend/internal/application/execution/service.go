@@ -39,6 +39,7 @@ type Service struct {
 var (
 	ErrExecutionNotFound    = errors.New("execution not found")
 	ErrExecutionGet         = errors.New("failed to get execution")
+	ErrExecutionList        = errors.New("failed to list executions")
 	ErrCheckpointGet        = errors.New("failed to load checkpoint")
 	ErrDAGNotFoundForResume = errors.New("original DAG not available for resume")
 	ErrDAGGet               = errors.New("failed to get DAG")
@@ -60,6 +61,48 @@ type ResumeInput struct {
 	Actor       string
 	Action      string
 	Detail      string
+}
+
+// ListInput controls optional execution listing filters.
+type ListInput struct {
+	DAGID  string
+	Status models.ExecutionStatus
+	Limit  int
+	Offset int
+}
+
+// GetExecution returns one execution by ID.
+func (s *Service) GetExecution(ctx context.Context, executionID string) (*models.Execution, error) {
+	exec, err := s.Executions.Get(ctx, executionID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, ErrExecutionNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrExecutionGet, err)
+	}
+	return exec, nil
+}
+
+// ListExecutions returns execution list with optional dag/status filters.
+func (s *Service) ListExecutions(ctx context.Context, input ListInput) ([]*models.Execution, error) {
+	var (
+		list []*models.Execution
+		err  error
+	)
+	if input.DAGID != "" {
+		list, err = s.Executions.ListByDAGID(ctx, input.DAGID, input.Limit, input.Offset)
+	} else if input.Status != "" {
+		list, err = s.Executions.ListByStatus(ctx, input.Status)
+	} else {
+		list, err = s.Executions.List(ctx)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrExecutionList, err)
+	}
+	if list == nil {
+		list = []*models.Execution{}
+	}
+	return list, nil
 }
 
 // RunWorkflow validates and starts one execution run.
