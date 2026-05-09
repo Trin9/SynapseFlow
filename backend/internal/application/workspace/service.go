@@ -23,7 +23,7 @@ type Service struct {
 	}
 
 	BuildTriggerContextView func(exec *models.Execution, episodes []*models.Episode) workspaceView.TriggerContextView
-	BuildReplaySliceView    func(ep *models.Episode, trace []models.ProcessTraceEntryView, percent int) models.ReplaySliceView
+	BuildReplaySliceView    func(ep *models.Episode, trace []models.ProcessTraceEntryView, percent int) workspaceView.ReplaySliceView
 	BuildComparisonSummary  func(current, historical *models.Execution) ComparisonSummaryView
 	BuildEpisodeDossier     func(ep *models.Episode, facts []models.RuntimeFactView, recalls []models.MemoryRecallView) models.EpisodeDossierView
 	BuildMemoryRecalls      func(ctx context.Context, ep *models.Episode, expStore memory.ExperienceStore) ([]models.MemoryRecallView, error)
@@ -105,7 +105,7 @@ func (s *Service) PostReviewAction(ctx context.Context, executionID, episodeID, 
 }
 
 // GetEpisodeReplay returns replay slice for one episode at requested percent.
-func (s *Service) GetEpisodeReplay(ctx context.Context, episodeID string, percent int) (models.ReplaySliceView, error) {
+func (s *Service) GetEpisodeReplay(ctx context.Context, episodeID string, percent int) (workspaceView.ReplaySliceView, error) {
 	if percent < 0 {
 		percent = 0
 	}
@@ -114,14 +114,14 @@ func (s *Service) GetEpisodeReplay(ctx context.Context, episodeID string, percen
 	}
 	ep, err := s.Episodes.Get(ctx, episodeID)
 	if errors.Is(err, store.ErrNotFound) {
-		return models.ReplaySliceView{}, ErrEpisodeNotFound
+		return workspaceView.ReplaySliceView{}, ErrEpisodeNotFound
 	}
 	if err != nil {
-		return models.ReplaySliceView{}, fmt.Errorf("%w: %v", ErrReplayGetEpisode, err)
+		return workspaceView.ReplaySliceView{}, fmt.Errorf("%w: %v", ErrReplayGetEpisode, err)
 	}
 	trace := projectionWorkspace.EpisodeToProcessTrace(ep)
 	if s.BuildReplaySliceView == nil {
-		return models.ReplaySliceView{}, fmt.Errorf("%w: replay builder unavailable", ErrReplayGetEpisode)
+		return workspaceView.ReplaySliceView{}, fmt.Errorf("%w: replay builder unavailable", ErrReplayGetEpisode)
 	}
 	return s.BuildReplaySliceView(ep, trace, percent), nil
 }

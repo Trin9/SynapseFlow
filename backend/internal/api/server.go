@@ -1734,7 +1734,7 @@ func buildTriggerContextView(exec *models.Execution, episodes []*models.Episode)
 }
 
 // buildReplaySliceView computes what is visible in the replay at the given percent.
-func buildReplaySliceView(ep *models.Episode, trace []models.ProcessTraceEntryView, percent int) models.ReplaySliceView {
+func buildReplaySliceView(ep *models.Episode, trace []models.ProcessTraceEntryView, percent int) workspaceView.ReplaySliceView {
 	visible := make([]models.ProcessTraceEntryView, 0, len(trace))
 	visibleFactIDs := make([]string, 0)
 	for _, entry := range trace {
@@ -1744,7 +1744,7 @@ func buildReplaySliceView(ep *models.Episode, trace []models.ProcessTraceEntryVi
 		}
 	}
 	// Derive checkpoint narrative from the last visible trace entry.
-	checkpoint := models.ReplayCheckpointView{
+	checkpoint := workspaceView.ReplayCheckpointView{
 		Label:    fmt.Sprintf("%d%%", percent),
 		Headline: "Execution in progress",
 	}
@@ -1753,7 +1753,7 @@ func buildReplaySliceView(ep *models.Episode, trace []models.ProcessTraceEntryVi
 		checkpoint.Headline = last.Title
 		checkpoint.Detail = last.Detail
 	}
-	return models.ReplaySliceView{
+	return workspaceView.ReplaySliceView{
 		EpisodeID:             ep.ID,
 		Percent:               percent,
 		Checkpoint:            checkpoint,
