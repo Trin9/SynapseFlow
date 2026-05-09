@@ -76,24 +76,8 @@ func (s *Server) handleWebhookAlert(c *gin.Context) {
 }
 
 func (s *Server) matchDAGForAlert(labels map[string]string) (*models.DAGConfig, bool) {
-	if dagID := strings.TrimSpace(labels["dag_id"]); dagID != "" {
-		dag, err := s.dags.Get(context.Background(), dagID)
-		return dag, err == nil
-	}
-
-	dags, err := s.dags.List(context.Background())
-	if err != nil {
-		return nil, false
-	}
-	service := strings.TrimSpace(labels["service"])
-	alertName := strings.TrimSpace(labels["alertname"])
-	for _, dag := range dags {
-		if dag == nil {
-			continue
-		}
-		if dag.Metadata["service"] == service && dag.Metadata["alertname"] == alertName {
-			return dag, true
-		}
+	if s.dagService != nil {
+		return s.dagService.MatchDAGForAlert(context.Background(), labels)
 	}
 	return nil, false
 }

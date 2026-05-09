@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Trin9/SynapseFlow/backend/internal/api/dto"
+	appDAG "github.com/Trin9/SynapseFlow/backend/internal/application/dag"
 	appExecution "github.com/Trin9/SynapseFlow/backend/internal/application/execution"
 	appWorkspace "github.com/Trin9/SynapseFlow/backend/internal/application/workspace"
 	workspaceView "github.com/Trin9/SynapseFlow/backend/internal/application/workspace/view"
@@ -71,6 +72,7 @@ type Server struct {
 	// episodeWriter is the shared write-permission layer for Episode objects.
 	// Injected into executors at startup; also used by API handlers (e.g. resume).
 	episodeWriter *engine.EpisodeWriter
+	dagService    *appDAG.Service
 	execService   *appExecution.Service
 	workspaceSvc  *appWorkspace.Service
 }
@@ -347,6 +349,7 @@ func NewServer(opts ...ServerOption) *Server {
 		ResolveSlackURL:            s.resolveSlackURL,
 		BuildExecutionNotification: buildExecutionNotification,
 	}
+	s.dagService = &appDAG.Service{DAGs: s.dags}
 	s.workspaceSvc = &appWorkspace.Service{
 		Executions:              s.execs,
 		Episodes:                s.episodes,
@@ -624,9 +627,7 @@ func (s *Server) handleCreateDAG(c *gin.Context) {
 	if dag.ID == "" {
 		dag.ID = generateID()
 	}
-	dag.CreatedAt = time.Now()
-	dag.UpdatedAt = dag.CreatedAt
-	if err := s.dags.Create(c.Request.Context(), dag); err != nil {
+	if err := s.dagService.CreateDAG(c.Request.Context(), dag); err != nil {
 		writeError(c, http.StatusInternalServerError, "dag_create_failed", "failed to create DAG", err.Error())
 		return
 	}
@@ -643,7 +644,7 @@ func (s *Server) handleCreateDAG(c *gin.Context) {
 // @Failure 500 {object} apiError
 // @Router /api/v1/dags [get]
 func (s *Server) handleListDAGs(c *gin.Context) {
-	list, err := s.dags.List(c.Request.Context())
+	list, err := s.dagService.ListDAGs(c.Request.Context())
 	if err != nil {
 		writeError(c, http.StatusInternalServerError, "dag_list_failed", "failed to list DAGs", err.Error())
 		return
@@ -663,12 +664,12 @@ func (s *Server) handleListDAGs(c *gin.Context) {
 // @Router /api/v1/dags/{id} [get]
 func (s *Server) handleGetDAG(c *gin.Context) {
 	id := c.Param("id")
-	dag, err := s.dags.Get(c.Request.Context(), id)
-	if errors.Is(err, store.ErrNotFound) {
-		writeError(c, http.StatusNotFound, "not_found", "DAG not found", nil)
-		return
-	}
+	dag, err := s.dagService.GetDAG(c.Request.Context(), id)
 	if err != nil {
+		if errors.Is(err, appDAG.ErrDAGNotFound) {
+			writeError(c, http.StatusNotFound, "not_found", "DAG not found", nil)
+			return
+		}
 		writeError(c, http.StatusInternalServerError, "dag_get_failed", "failed to get DAG", err.Error())
 		return
 	}
@@ -690,22 +691,15 @@ func (s *Server) handleGetDAG(c *gin.Context) {
 // @Router /api/v1/dags/{id} [put]
 func (s *Server) handleUpdateDAG(c *gin.Context) {
 	id := c.Param("id")
-	if _, err := s.dags.Get(c.Request.Context(), id); errors.Is(err, store.ErrNotFound) {
-		writeError(c, http.StatusNotFound, "not_found", "DAG not found", nil)
-		return
-	} else if err != nil {
-		writeError(c, http.StatusInternalServerError, "dag_get_failed", "failed to get DAG", err.Error())
-		return
-	}
-
 	dag, ok := getValidatedDAG(c)
 	if !ok {
 		return
 	}
-
-	dag.ID = id
-	dag.UpdatedAt = time.Now()
-	if err := s.dags.Update(c.Request.Context(), dag); err != nil {
+	if err := s.dagService.UpdateDAG(c.Request.Context(), id, dag); err != nil {
+		if errors.Is(err, appDAG.ErrDAGNotFound) {
+			writeError(c, http.StatusNotFound, "not_found", "DAG not found", nil)
+			return
+		}
 		writeError(c, http.StatusInternalServerError, "dag_update_failed", "failed to update DAG", err.Error())
 		return
 	}
@@ -725,10 +719,11 @@ func (s *Server) handleUpdateDAG(c *gin.Context) {
 // @Router /api/v1/dags/{id} [delete]
 func (s *Server) handleDeleteDAG(c *gin.Context) {
 	id := c.Param("id")
-	if err := s.dags.Delete(c.Request.Context(), id); errors.Is(err, store.ErrNotFound) {
-		writeError(c, http.StatusNotFound, "not_found", "DAG not found", nil)
-		return
-	} else if err != nil {
+	if err := s.dagService.DeleteDAG(c.Request.Context(), id); err != nil {
+		if errors.Is(err, appDAG.ErrDAGNotFound) {
+			writeError(c, http.StatusNotFound, "not_found", "DAG not found", nil)
+			return
+		}
 		writeError(c, http.StatusInternalServerError, "dag_delete_failed", "failed to delete DAG", err.Error())
 		return
 	}
@@ -749,12 +744,12 @@ func (s *Server) handleDeleteDAG(c *gin.Context) {
 // @Router /api/v1/dags/{id}/run [post]
 func (s *Server) handleRunDAG(c *gin.Context) {
 	id := c.Param("id")
-	dag, err := s.dags.Get(c.Request.Context(), id)
-	if errors.Is(err, store.ErrNotFound) {
-		writeError(c, http.StatusNotFound, "not_found", "DAG not found", nil)
-		return
-	}
+	dag, err := s.dagService.GetDAG(c.Request.Context(), id)
 	if err != nil {
+		if errors.Is(err, appDAG.ErrDAGNotFound) {
+			writeError(c, http.StatusNotFound, "not_found", "DAG not found", nil)
+			return
+		}
 		writeError(c, http.StatusInternalServerError, "dag_get_failed", "failed to get DAG", err.Error())
 		return
 	}
