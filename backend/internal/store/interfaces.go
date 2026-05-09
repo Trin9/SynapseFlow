@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 
+	workspaceView "github.com/Trin9/SynapseFlow/backend/internal/application/workspace/view"
 	"github.com/Trin9/SynapseFlow/backend/internal/audit"
 	"github.com/Trin9/SynapseFlow/backend/pkg/models"
 )
@@ -30,7 +31,7 @@ type ExecutionStore interface {
 	// ListByStatus returns executions matching the given status, newest first.
 	ListByStatus(ctx context.Context, status models.ExecutionStatus) ([]*models.Execution, error)
 	// GetExecutionSummary builds a high-level summary view of a single execution.
-	GetExecutionSummary(ctx context.Context, execID string) (*models.ExecutionSummaryView, error)
+	GetExecutionSummary(ctx context.Context, execID string) (*workspaceView.ExecutionSummaryView, error)
 }
 
 type AuditStore interface {

@@ -9,12 +9,12 @@ import (
 )
 
 // ExecutionToSummary converts an Execution to an ExecutionSummaryView.
-func ExecutionToSummary(exec *models.Execution) *models.ExecutionSummaryView {
+func ExecutionToSummary(exec *models.Execution) *workspaceView.ExecutionSummaryView {
 	label := exec.DAGName
 	if len(exec.ID) >= 8 {
 		label = fmt.Sprintf("%s #%s", exec.DAGName, exec.ID[:8])
 	}
-	return &models.ExecutionSummaryView{
+	return &workspaceView.ExecutionSummaryView{
 		ExecutionID:  exec.ID,
 		DAGID:        exec.DAGID,
 		DAGName:      exec.DAGName,
@@ -24,7 +24,7 @@ func ExecutionToSummary(exec *models.Execution) *models.ExecutionSummaryView {
 		DurationMs:   exec.Duration.Milliseconds(),
 		Mode:         "execution",
 		WorkflowKind: "investigation",
-		Display: models.ExecutionDisplayView{
+		Display: workspaceView.ExecutionDisplayView{
 			RunLabel:   label,
 			TraceTitle: exec.DAGName,
 		},

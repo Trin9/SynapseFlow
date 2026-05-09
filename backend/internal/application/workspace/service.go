@@ -46,7 +46,7 @@ var (
 )
 
 // GetExecutionSummary returns summary projection for one execution.
-func (s *Service) GetExecutionSummary(ctx context.Context, executionID string) (*models.ExecutionSummaryView, error) {
+func (s *Service) GetExecutionSummary(ctx context.Context, executionID string) (*workspaceView.ExecutionSummaryView, error) {
 	summary, err := s.Executions.GetExecutionSummary(ctx, executionID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, ErrExecutionNotFound

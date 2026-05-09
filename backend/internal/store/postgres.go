@@ -356,7 +356,7 @@ func (s *PostgresExecutionStore) ListByStatus(ctx context.Context, status models
 }
 
 // GetExecutionSummary builds a high-level summary view of a single execution.
-func (s *PostgresExecutionStore) GetExecutionSummary(ctx context.Context, execID string) (*models.ExecutionSummaryView, error) {
+func (s *PostgresExecutionStore) GetExecutionSummary(ctx context.Context, execID string) (*workspaceView.ExecutionSummaryView, error) {
 	exec, err := s.Get(ctx, execID)
 	if err != nil {
 		return nil, err

@@ -1877,12 +1877,12 @@ func buildComparisonSummary(current, historical *models.Execution) appWorkspace.
 // Used by handleListExecutions when ?view=summary is requested (CR-015).
 // Mirrors the logic in store.projectExecutionToSummary; kept inline to avoid
 // coupling the API layer to the store package.
-func execToSummaryView(exec *models.Execution) models.ExecutionSummaryView {
+func execToSummaryView(exec *models.Execution) workspaceView.ExecutionSummaryView {
 	label := exec.DAGName
 	if len(exec.ID) >= 8 {
 		label = fmt.Sprintf("%s #%s", exec.DAGName, exec.ID[:8])
 	}
-	return models.ExecutionSummaryView{
+	return workspaceView.ExecutionSummaryView{
 		ExecutionID:  exec.ID,
 		DAGID:        exec.DAGID,
 		DAGName:      exec.DAGName,
@@ -1892,7 +1892,7 @@ func execToSummaryView(exec *models.Execution) models.ExecutionSummaryView {
 		DurationMs:   exec.Duration.Milliseconds(),
 		Mode:         "execution",
 		WorkflowKind: "investigation",
-		Display: models.ExecutionDisplayView{
+		Display: workspaceView.ExecutionDisplayView{
 			RunLabel:   label,
 			TraceTitle: exec.DAGName,
 		},
@@ -1900,8 +1900,8 @@ func execToSummaryView(exec *models.Execution) models.ExecutionSummaryView {
 }
 
 // projectExecutionList converts a slice of raw Executions to ExecutionSummaryView.
-func projectExecutionList(execs []*models.Execution) []models.ExecutionSummaryView {
-	out := make([]models.ExecutionSummaryView, len(execs))
+func projectExecutionList(execs []*models.Execution) []workspaceView.ExecutionSummaryView {
+	out := make([]workspaceView.ExecutionSummaryView, len(execs))
 	for i, e := range execs {
 		out[i] = execToSummaryView(e)
 	}
