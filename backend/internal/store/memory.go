@@ -5,6 +5,7 @@ import (
 	"sort"
 	"sync"
 
+	workspaceView "github.com/Trin9/SynapseFlow/backend/internal/application/workspace/view"
 	"github.com/Trin9/SynapseFlow/backend/internal/audit"
 	projectionWorkspace "github.com/Trin9/SynapseFlow/backend/internal/projection/workspace"
 	"github.com/Trin9/SynapseFlow/backend/pkg/models"
@@ -483,7 +484,7 @@ func (s *MemoryEpisodeStore) ListProcessTraceByEpisode(ctx context.Context, epis
 	return projectionWorkspace.EpisodeToProcessTrace(ep), nil
 }
 
-func (s *MemoryEpisodeStore) ListRuntimeFactsByEpisode(ctx context.Context, episodeID string) ([]models.RuntimeFactView, error) {
+func (s *MemoryEpisodeStore) ListRuntimeFactsByEpisode(ctx context.Context, episodeID string) ([]workspaceView.RuntimeFactView, error) {
 	ep, err := s.Get(ctx, episodeID)
 	if err != nil {
 		return nil, err

@@ -1765,7 +1765,7 @@ func buildReplaySliceView(ep *models.Episode, trace []models.ProcessTraceEntryVi
 }
 
 // buildEpisodeDossier constructs an EpisodeDossierView from an episode and its facts.
-func buildEpisodeDossier(ep *models.Episode, facts []models.RuntimeFactView, recalls []workspaceView.MemoryRecallView) workspaceView.EpisodeDossierView {
+func buildEpisodeDossier(ep *models.Episode, facts []workspaceView.RuntimeFactView, recalls []workspaceView.MemoryRecallView) workspaceView.EpisodeDossierView {
 	display := models.DossierDisplayView{}
 	if ep.Verdict != nil {
 		display.Verdict = string(ep.Verdict.Result)

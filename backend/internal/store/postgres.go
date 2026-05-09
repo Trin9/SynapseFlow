@@ -12,6 +12,7 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
+	workspaceView "github.com/Trin9/SynapseFlow/backend/internal/application/workspace/view"
 	"github.com/Trin9/SynapseFlow/backend/internal/audit"
 	projectionWorkspace "github.com/Trin9/SynapseFlow/backend/internal/projection/workspace"
 	"github.com/Trin9/SynapseFlow/backend/pkg/models"
@@ -915,7 +916,7 @@ func (s *PostgresEpisodeStore) ListProcessTraceByEpisode(ctx context.Context, ep
 	return projectionWorkspace.EpisodeToProcessTrace(ep), nil
 }
 
-func (s *PostgresEpisodeStore) ListRuntimeFactsByEpisode(ctx context.Context, episodeID string) ([]models.RuntimeFactView, error) {
+func (s *PostgresEpisodeStore) ListRuntimeFactsByEpisode(ctx context.Context, episodeID string) ([]workspaceView.RuntimeFactView, error) {
 	ep, err := s.Get(ctx, episodeID)
 	if err != nil {
 		return nil, err

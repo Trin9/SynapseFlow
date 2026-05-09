@@ -43,7 +43,7 @@ type EpisodeDossierView struct {
 	Display          DossierDisplayView         `json:"display"`
 	ExpectedBehavior []ExpectedBehaviorView     `json:"expected_behavior"`
 	VerdictBridge    []VerdictBridgeItemView    `json:"verdict_bridge"`
-	RuntimeFacts     []models.RuntimeFactView   `json:"runtime_facts"`
+	RuntimeFacts     []RuntimeFactView          `json:"runtime_facts"`
 	Handles          []models.EpisodeHandle     `json:"handles"`
 	MemoryRecalls    []MemoryRecallView         `json:"memory_recalls"`
 	HumanAuditTrail  []models.HumanIntervention `json:"human_audit_trail"`

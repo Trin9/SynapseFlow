@@ -103,20 +103,20 @@ func EpisodeToProcessTrace(ep *models.Episode) []models.ProcessTraceEntryView {
 }
 
 // EpisodeToRuntimeFacts projects evidence entries to RuntimeFactView.
-func EpisodeToRuntimeFacts(ep *models.Episode) []models.RuntimeFactView {
+func EpisodeToRuntimeFacts(ep *models.Episode) []workspaceView.RuntimeFactView {
 	handleBySource := make(map[string]string, len(ep.Handles))
 	for _, h := range ep.Handles {
 		if _, exists := handleBySource[h.Source]; !exists {
 			handleBySource[h.Source] = string(h.Type) + ":" + h.Value
 		}
 	}
-	out := make([]models.RuntimeFactView, 0, len(ep.Evidence))
+	out := make([]workspaceView.RuntimeFactView, 0, len(ep.Evidence))
 	for _, ev := range ep.Evidence {
 		title := ev.Label
 		if title == "" {
 			title = fmt.Sprintf("Evidence (%s)", ev.Type)
 		}
-		out = append(out, models.RuntimeFactView{ID: ev.ID, Title: title, Summary: truncateStr(ev.Content, 200), FocusKey: handleBySource[ev.NodeID], SourceType: nodeTypeToSourceType(ev.NodeType), Collector: string(ev.NodeType) + ":" + ev.NodeID, Content: ev.Content, ContentRef: ev.ContentRef})
+		out = append(out, workspaceView.RuntimeFactView{ID: ev.ID, Title: title, Summary: truncateStr(ev.Content, 200), FocusKey: handleBySource[ev.NodeID], SourceType: nodeTypeToSourceType(ev.NodeType), Collector: string(ev.NodeType) + ":" + ev.NodeID, Content: ev.Content, ContentRef: ev.ContentRef})
 	}
 	return out
 }
