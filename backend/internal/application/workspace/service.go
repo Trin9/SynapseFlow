@@ -23,7 +23,7 @@ type Service struct {
 	}
 
 	BuildTriggerContextView func(exec *models.Execution, episodes []*models.Episode) workspaceView.TriggerContextView
-	BuildReplaySliceView    func(ep *models.Episode, trace []models.ProcessTraceEntryView, percent int) workspaceView.ReplaySliceView
+	BuildReplaySliceView    func(ep *models.Episode, trace []workspaceView.ProcessTraceEntryView, percent int) workspaceView.ReplaySliceView
 	BuildComparisonSummary  func(current, historical *models.Execution) ComparisonSummaryView
 	BuildEpisodeDossier     func(ep *models.Episode, facts []workspaceView.RuntimeFactView, recalls []workspaceView.MemoryRecallView) workspaceView.EpisodeDossierView
 	BuildMemoryRecalls      func(ctx context.Context, ep *models.Episode, expStore memory.ExperienceStore) ([]workspaceView.MemoryRecallView, error)

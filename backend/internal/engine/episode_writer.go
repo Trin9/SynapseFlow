@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"time"
 
+	workspaceView "github.com/Trin9/SynapseFlow/backend/internal/application/workspace/view"
 	domainEpisode "github.com/Trin9/SynapseFlow/backend/internal/domain/episode"
 	"github.com/Trin9/SynapseFlow/backend/internal/store"
 	"github.com/Trin9/SynapseFlow/backend/pkg/models"
@@ -342,7 +343,7 @@ func (w *EpisodeWriter) AppendHumanIntervention(
 func (w *EpisodeWriter) AppendProcessTraceEntry(
 	ctx context.Context,
 	episodeID string,
-	entry models.ProcessTraceEntryView,
+	entry workspaceView.ProcessTraceEntryView,
 ) error {
 	ep, err := w.store.Get(ctx, episodeID)
 	if err != nil {

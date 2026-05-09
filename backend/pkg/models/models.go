@@ -562,18 +562,6 @@ type EpisodeArtifact struct {
 // Reference: EXECUTION_WORKSPACE_PROTOCOL_DRAFT_CN.md
 // ---------------------------------------------------------------------------
 
-// ProcessTraceEntryView is a single step in the process trace timeline.
-// stage values: "Action" | "Round N" | "Verdict" | "Human Review" | "Circuit Breaker"
-type ProcessTraceEntryView struct {
-	ID     string   `json:"id"`
-	Stage  string   `json:"stage"`
-	Title  string   `json:"title"`
-	Detail string   `json:"detail,omitempty"`
-	Status string   `json:"status"` // "success" | "failed" | "running" | "pending"
-	Chips  []string `json:"chips,omitempty"`
-	Range  [2]int   `json:"range"` // [start_percent, end_percent]
-}
-
 // DossierDisplayView holds the display-layer state of a dossier.
 type DossierDisplayView struct {
 	Verdict      string  `json:"verdict,omitempty"`

@@ -476,7 +476,7 @@ func (s *MemoryEpisodeStore) ListEpisodeSummariesByExecution(ctx context.Context
 	return out, nil
 }
 
-func (s *MemoryEpisodeStore) ListProcessTraceByEpisode(ctx context.Context, episodeID string) ([]models.ProcessTraceEntryView, error) {
+func (s *MemoryEpisodeStore) ListProcessTraceByEpisode(ctx context.Context, episodeID string) ([]workspaceView.ProcessTraceEntryView, error) {
 	ep, err := s.Get(ctx, episodeID)
 	if err != nil {
 		return nil, err

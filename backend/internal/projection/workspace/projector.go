@@ -62,12 +62,12 @@ func EpisodeToSummary(ep *models.Episode) workspaceView.EpisodeSummaryView {
 }
 
 // EpisodeToProcessTrace derives a process-trace timeline from an Episode.
-func EpisodeToProcessTrace(ep *models.Episode) []models.ProcessTraceEntryView {
+func EpisodeToProcessTrace(ep *models.Episode) []workspaceView.ProcessTraceEntryView {
 	total := len(ep.Evidence) + len(ep.HumanInterventions)
 	if ep.Verdict != nil {
 		total++
 	}
-	entries := make([]models.ProcessTraceEntryView, 0, total)
+	entries := make([]workspaceView.ProcessTraceEntryView, 0, total)
 	roundN := 0
 	for i, ev := range ep.Evidence {
 		roundN++
@@ -80,24 +80,24 @@ func EpisodeToProcessTrace(ep *models.Episode) []models.ProcessTraceEntryView {
 		if title == "" {
 			title = fmt.Sprintf("Evidence #%d", i+1)
 		}
-		entry := models.ProcessTraceEntryView{ID: ev.ID, Stage: stage, Title: title, Detail: truncateStr(ev.Content, 200), Status: "success", Range: [2]int{startPct, endPct}}
+		entry := workspaceView.ProcessTraceEntryView{ID: ev.ID, Stage: stage, Title: title, Detail: truncateStr(ev.Content, 200), Status: "success", Range: [2]int{startPct, endPct}}
 		if string(ev.NodeType) != "" {
 			entry.Chips = []string{string(ev.NodeType)}
 		}
 		entries = append(entries, entry)
 	}
 	for _, hi := range ep.HumanInterventions {
-		entries = append(entries, models.ProcessTraceEntryView{ID: hi.NodeID + "_human", Stage: "Human Review", Title: domainEpisode.HumanActionLabel(hi.Action), Detail: truncateStr(hi.Detail, 200), Status: "success", Range: [2]int{100, 100}})
+		entries = append(entries, workspaceView.ProcessTraceEntryView{ID: hi.NodeID + "_human", Stage: "Human Review", Title: domainEpisode.HumanActionLabel(hi.Action), Detail: truncateStr(hi.Detail, 200), Status: "success", Range: [2]int{100, 100}})
 	}
 	if ep.Verdict != nil {
 		status := string(ep.Verdict.Result)
 		if status == "" {
 			status = "pending"
 		}
-		entries = append(entries, models.ProcessTraceEntryView{ID: ep.ID + "_verdict", Stage: "Verdict", Title: domainEpisode.VerdictLabelFromResult(ep.Verdict.Result), Detail: truncateStr(ep.Verdict.Conclusion, 200), Status: status, Range: [2]int{100, 100}})
+		entries = append(entries, workspaceView.ProcessTraceEntryView{ID: ep.ID + "_verdict", Stage: "Verdict", Title: domainEpisode.VerdictLabelFromResult(ep.Verdict.Result), Detail: truncateStr(ep.Verdict.Conclusion, 200), Status: status, Range: [2]int{100, 100}})
 	}
 	if ep.LoopGuard.MaxIterations > 0 && ep.LoopGuard.CurrentIteration >= ep.LoopGuard.MaxIterations {
-		entries = append(entries, models.ProcessTraceEntryView{ID: ep.ID + "_circuit_breaker", Stage: "Circuit Breaker", Title: "Max iterations reached", Status: "failed", Range: [2]int{100, 100}})
+		entries = append(entries, workspaceView.ProcessTraceEntryView{ID: ep.ID + "_circuit_breaker", Stage: "Circuit Breaker", Title: "Max iterations reached", Status: "failed", Range: [2]int{100, 100}})
 	}
 	return entries
 }

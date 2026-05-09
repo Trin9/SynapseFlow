@@ -1734,8 +1734,8 @@ func buildTriggerContextView(exec *models.Execution, episodes []*models.Episode)
 }
 
 // buildReplaySliceView computes what is visible in the replay at the given percent.
-func buildReplaySliceView(ep *models.Episode, trace []models.ProcessTraceEntryView, percent int) workspaceView.ReplaySliceView {
-	visible := make([]models.ProcessTraceEntryView, 0, len(trace))
+func buildReplaySliceView(ep *models.Episode, trace []workspaceView.ProcessTraceEntryView, percent int) workspaceView.ReplaySliceView {
+	visible := make([]workspaceView.ProcessTraceEntryView, 0, len(trace))
 	visibleFactIDs := make([]string, 0)
 	for _, entry := range trace {
 		if entry.Range[0] <= percent {

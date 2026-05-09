@@ -908,7 +908,7 @@ func (s *PostgresEpisodeStore) ListEpisodeSummariesByExecution(ctx context.Conte
 	return out, nil
 }
 
-func (s *PostgresEpisodeStore) ListProcessTraceByEpisode(ctx context.Context, episodeID string) ([]models.ProcessTraceEntryView, error) {
+func (s *PostgresEpisodeStore) ListProcessTraceByEpisode(ctx context.Context, episodeID string) ([]workspaceView.ProcessTraceEntryView, error) {
 	ep, err := s.Get(ctx, episodeID)
 	if err != nil {
 		return nil, err
