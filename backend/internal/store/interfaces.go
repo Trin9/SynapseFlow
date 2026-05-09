@@ -56,6 +56,8 @@ type EpisodeStore interface {
 	// ListByExecution returns all Episodes for a given execution, ordered by
 	// created_at ascending.
 	ListByExecution(ctx context.Context, execID string) ([]*models.Episode, error)
+	// ListEpisodeSummariesByExecution returns episode summaries for one execution.
+	ListEpisodeSummariesByExecution(ctx context.Context, execID string) ([]workspaceView.EpisodeSummaryView, error)
 	// SaveArtifact upserts a large-payload artifact linked to an Episode.
 	SaveArtifact(ctx context.Context, artifact *models.EpisodeArtifact) error
 	// ListArtifacts returns all artifacts for an Episode.

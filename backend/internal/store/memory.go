@@ -464,12 +464,12 @@ func cloneArtifact(a *models.EpisodeArtifact) *models.EpisodeArtifact {
 // MemoryEpisodeStore – view projection methods (M1.2)
 // ---------------------------------------------------------------------------
 
-func (s *MemoryEpisodeStore) ListEpisodeSummariesByExecution(ctx context.Context, execID string) ([]models.EpisodeSummaryView, error) {
+func (s *MemoryEpisodeStore) ListEpisodeSummariesByExecution(ctx context.Context, execID string) ([]workspaceView.EpisodeSummaryView, error) {
 	eps, err := s.ListByExecution(ctx, execID)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]models.EpisodeSummaryView, len(eps))
+	out := make([]workspaceView.EpisodeSummaryView, len(eps))
 	for i, ep := range eps {
 		out[i] = projectionWorkspace.EpisodeToSummary(ep)
 	}

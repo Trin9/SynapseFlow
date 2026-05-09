@@ -147,7 +147,7 @@ type resumeExecutionRequest struct {
 
 // episodeSummariesResponse is the list payload for episode summaries.
 type episodeSummariesResponse struct {
-	Episodes []models.EpisodeSummaryView `json:"episodes"` // Episode summary items.
+	Episodes []workspaceView.EpisodeSummaryView `json:"episodes"` // Episode summary items.
 }
 
 // episodesResponse is the list payload for full episode objects.
@@ -1267,12 +1267,12 @@ func (s *Server) handleListEpisodes(c *gin.Context) {
 			writeError(c, http.StatusInternalServerError, "episode_list_error", "failed to list episode summaries", err.Error())
 			return
 		}
-		summaries := make([]models.EpisodeSummaryView, len(episodes))
+		summaries := make([]workspaceView.EpisodeSummaryView, len(episodes))
 		for i, ep := range episodes {
 			summaries[i] = projectionWorkspace.EpisodeToSummary(ep)
 		}
 		if summaries == nil {
-			summaries = []models.EpisodeSummaryView{}
+			summaries = []workspaceView.EpisodeSummaryView{}
 		}
 		c.JSON(http.StatusOK, episodeSummariesResponse{Episodes: summaries})
 		return

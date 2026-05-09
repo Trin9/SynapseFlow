@@ -562,27 +562,6 @@ type EpisodeArtifact struct {
 // Reference: EXECUTION_WORKSPACE_PROTOCOL_DRAFT_CN.md
 // ---------------------------------------------------------------------------
 
-// EpisodeDisplayView holds display-layer metadata for an episode card.
-type EpisodeDisplayView struct {
-	Verdict      string  `json:"verdict,omitempty"`       // display verdict (may reflect human review)
-	VerdictLabel string  `json:"verdict_label,omitempty"` // human-readable label
-	Summary      string  `json:"summary,omitempty"`       // one-line summary
-	Banner       *string `json:"banner"`                  // null when no alert banner needed
-}
-
-// EpisodeSummaryView is the episode list item returned by
-// GET /api/v1/executions/:execution_id/episodes (upgraded response).
-type EpisodeSummaryView struct {
-	EpisodeID            string             `json:"episode_id"`
-	Label                string             `json:"label"`
-	Status               EpisodeStatus      `json:"status"`
-	Display              EpisodeDisplayView `json:"display"`
-	Confidence           EpisodeConfidence  `json:"confidence,omitempty"`
-	EvidenceCount        int                `json:"evidence_count"`
-	HandleCount          int                `json:"handle_count"`
-	DefaultReplayPercent int                `json:"default_replay_percent"`
-}
-
 // ProcessTraceEntryView is a single step in the process trace timeline.
 // stage values: "Action" | "Round N" | "Verdict" | "Human Review" | "Circuit Breaker"
 type ProcessTraceEntryView struct {

@@ -32,8 +32,8 @@ func ExecutionToSummary(exec *models.Execution) *workspaceView.ExecutionSummaryV
 }
 
 // EpisodeToSummary converts an Episode to an EpisodeSummaryView.
-func EpisodeToSummary(ep *models.Episode) models.EpisodeSummaryView {
-	sv := models.EpisodeSummaryView{
+func EpisodeToSummary(ep *models.Episode) workspaceView.EpisodeSummaryView {
+	sv := workspaceView.EpisodeSummaryView{
 		EpisodeID:     ep.ID,
 		Label:         string(ep.EpisodeType),
 		Status:        ep.Status,
@@ -48,7 +48,7 @@ func EpisodeToSummary(ep *models.Episode) models.EpisodeSummaryView {
 	}
 	if ep.Verdict != nil {
 		sv.Confidence = ep.Verdict.Confidence
-		sv.Display = models.EpisodeDisplayView{
+		sv.Display = workspaceView.EpisodeDisplayView{
 			Verdict:      string(ep.Verdict.Result),
 			VerdictLabel: domainEpisode.VerdictLabelFromResult(ep.Verdict.Result),
 			Summary:      truncateStr(ep.Verdict.Conclusion, 120),
