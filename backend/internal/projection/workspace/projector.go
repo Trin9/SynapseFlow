@@ -3,6 +3,7 @@ package workspace
 import (
 	"fmt"
 
+	workspaceView "github.com/Trin9/SynapseFlow/backend/internal/application/workspace/view"
 	domainEpisode "github.com/Trin9/SynapseFlow/backend/internal/domain/episode"
 	"github.com/Trin9/SynapseFlow/backend/pkg/models"
 )
@@ -121,8 +122,8 @@ func EpisodeToRuntimeFacts(ep *models.Episode) []models.RuntimeFactView {
 }
 
 // EpisodesToReviewState derives a ReviewStateView from human interventions.
-func EpisodesToReviewState(episodes []*models.Episode) *models.ReviewStateView {
-	state := &models.ReviewStateView{Status: "pending"}
+func EpisodesToReviewState(episodes []*models.Episode) *workspaceView.ReviewStateView {
+	state := &workspaceView.ReviewStateView{Status: "pending"}
 	for _, ep := range episodes {
 		for _, hi := range ep.HumanInterventions {
 			if hi.Action == models.HumanActionSuspended {

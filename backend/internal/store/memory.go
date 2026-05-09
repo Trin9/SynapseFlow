@@ -490,11 +490,3 @@ func (s *MemoryEpisodeStore) ListRuntimeFactsByEpisode(ctx context.Context, epis
 	}
 	return projectionWorkspace.EpisodeToRuntimeFacts(ep), nil
 }
-
-func (s *MemoryEpisodeStore) GetReviewStateByExecution(ctx context.Context, execID string) (*models.ReviewStateView, error) {
-	eps, err := s.ListByExecution(ctx, execID)
-	if err != nil {
-		return nil, err
-	}
-	return projectionWorkspace.EpisodesToReviewState(eps), nil
-}

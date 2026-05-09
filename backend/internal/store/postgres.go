@@ -922,11 +922,3 @@ func (s *PostgresEpisodeStore) ListRuntimeFactsByEpisode(ctx context.Context, ep
 	}
 	return projectionWorkspace.EpisodeToRuntimeFacts(ep), nil
 }
-
-func (s *PostgresEpisodeStore) GetReviewStateByExecution(ctx context.Context, execID string) (*models.ReviewStateView, error) {
-	eps, err := s.ListByExecution(ctx, execID)
-	if err != nil {
-		return nil, err
-	}
-	return projectionWorkspace.EpisodesToReviewState(eps), nil
-}

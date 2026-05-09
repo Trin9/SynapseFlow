@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	workspaceView "github.com/Trin9/SynapseFlow/backend/internal/application/workspace/view"
 	domainEpisode "github.com/Trin9/SynapseFlow/backend/internal/domain/episode"
 	"github.com/Trin9/SynapseFlow/backend/internal/memory"
 	projectionWorkspace "github.com/Trin9/SynapseFlow/backend/internal/projection/workspace"
@@ -76,7 +77,7 @@ func (s *Service) GetTriggerContext(ctx context.Context, executionID string) (mo
 }
 
 // GetReviewState returns aggregate review-state projection for one execution.
-func (s *Service) GetReviewState(ctx context.Context, executionID string) (*models.ReviewStateView, error) {
+func (s *Service) GetReviewState(ctx context.Context, executionID string) (*workspaceView.ReviewStateView, error) {
 	episodes, err := s.Episodes.ListByExecution(ctx, executionID)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrReviewStateGet, err)
