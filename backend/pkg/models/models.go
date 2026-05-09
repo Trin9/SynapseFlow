@@ -555,17 +555,3 @@ type EpisodeArtifact struct {
 	Content     string    `json:"content,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
 }
-
-// ---------------------------------------------------------------------------
-// View Models: API response types for the Execution Workspace (M1.1)
-// These are projection/display types, separate from the internal Episode model.
-// Reference: EXECUTION_WORKSPACE_PROTOCOL_DRAFT_CN.md
-// ---------------------------------------------------------------------------
-
-// DossierDisplayView holds the display-layer state of a dossier.
-type DossierDisplayView struct {
-	Verdict      string  `json:"verdict,omitempty"`
-	VerdictLabel string  `json:"verdict_label,omitempty"`
-	Summary      string  `json:"summary,omitempty"`
-	Banner       *string `json:"banner"` // null when no banner
-}

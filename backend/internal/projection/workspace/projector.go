@@ -54,7 +54,7 @@ func EpisodeToSummary(ep *models.Episode) workspaceView.EpisodeSummaryView {
 			Summary:      truncateStr(ep.Verdict.Conclusion, 120),
 		}
 	}
-	tmp := models.DossierDisplayView{Banner: sv.Display.Banner, VerdictLabel: sv.Display.VerdictLabel}
+	tmp := domainEpisode.HumanReviewDisplay{Banner: sv.Display.Banner, VerdictLabel: sv.Display.VerdictLabel}
 	domainEpisode.ApplyHumanReviewDisplay(ep, &tmp)
 	sv.Display.Banner = tmp.Banner
 	sv.Display.VerdictLabel = tmp.VerdictLabel

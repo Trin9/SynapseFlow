@@ -33,6 +33,12 @@ type ReviewStateMutation struct {
 	ApplyConclusion bool
 }
 
+// HumanReviewDisplay carries only the display fields mutated by human review actions.
+type HumanReviewDisplay struct {
+	VerdictLabel string
+	Banner       *string
+}
+
 // ReviewMutationFromStatus maps review action status string to episode mutation policy.
 func ReviewMutationFromStatus(status string, current models.EpisodeStatus) ReviewStateMutation {
 	switch status {
@@ -101,7 +107,7 @@ func VerdictLabelFromResult(r models.EpisodeResult) string {
 }
 
 // ApplyHumanReviewDisplay updates dossier display fields from human interventions.
-func ApplyHumanReviewDisplay(ep *models.Episode, display *models.DossierDisplayView) {
+func ApplyHumanReviewDisplay(ep *models.Episode, display *HumanReviewDisplay) {
 	if ep == nil || display == nil {
 		return
 	}

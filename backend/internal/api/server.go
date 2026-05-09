@@ -1766,13 +1766,16 @@ func buildReplaySliceView(ep *models.Episode, trace []workspaceView.ProcessTrace
 
 // buildEpisodeDossier constructs an EpisodeDossierView from an episode and its facts.
 func buildEpisodeDossier(ep *models.Episode, facts []workspaceView.RuntimeFactView, recalls []workspaceView.MemoryRecallView) workspaceView.EpisodeDossierView {
-	display := models.DossierDisplayView{}
+	display := workspaceView.DossierDisplayView{}
 	if ep.Verdict != nil {
 		display.Verdict = string(ep.Verdict.Result)
 		display.VerdictLabel = domainEpisode.VerdictLabelFromResult(ep.Verdict.Result)
 		display.Summary = ep.Verdict.Conclusion
 	}
-	domainEpisode.ApplyHumanReviewDisplay(ep, &display)
+	tmp := domainEpisode.HumanReviewDisplay{VerdictLabel: display.VerdictLabel, Banner: display.Banner}
+	domainEpisode.ApplyHumanReviewDisplay(ep, &tmp)
+	display.VerdictLabel = tmp.VerdictLabel
+	display.Banner = tmp.Banner
 
 	// Derive a common focus_key for cross-column linkage when the episode has a
 	// single unambiguous handle (or all handles share the same type:value).
