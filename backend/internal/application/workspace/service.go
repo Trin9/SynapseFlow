@@ -25,8 +25,8 @@ type Service struct {
 	BuildTriggerContextView func(exec *models.Execution, episodes []*models.Episode) workspaceView.TriggerContextView
 	BuildReplaySliceView    func(ep *models.Episode, trace []models.ProcessTraceEntryView, percent int) workspaceView.ReplaySliceView
 	BuildComparisonSummary  func(current, historical *models.Execution) ComparisonSummaryView
-	BuildEpisodeDossier     func(ep *models.Episode, facts []models.RuntimeFactView, recalls []models.MemoryRecallView) models.EpisodeDossierView
-	BuildMemoryRecalls      func(ctx context.Context, ep *models.Episode, expStore memory.ExperienceStore) ([]models.MemoryRecallView, error)
+	BuildEpisodeDossier     func(ep *models.Episode, facts []models.RuntimeFactView, recalls []workspaceView.MemoryRecallView) workspaceView.EpisodeDossierView
+	BuildMemoryRecalls      func(ctx context.Context, ep *models.Episode, expStore memory.ExperienceStore) ([]workspaceView.MemoryRecallView, error)
 	LogMemoryRecallWarning  func(episodeID string, err error)
 }
 
@@ -149,16 +149,16 @@ func (s *Service) GetComparisonTarget(ctx context.Context, executionID, historic
 }
 
 // GetEpisodeDossier returns dossier view for one episode.
-func (s *Service) GetEpisodeDossier(ctx context.Context, episodeID string) (models.EpisodeDossierView, error) {
+func (s *Service) GetEpisodeDossier(ctx context.Context, episodeID string) (workspaceView.EpisodeDossierView, error) {
 	ep, err := s.Episodes.Get(ctx, episodeID)
 	if errors.Is(err, store.ErrNotFound) {
-		return models.EpisodeDossierView{}, ErrEpisodeNotFound
+		return workspaceView.EpisodeDossierView{}, ErrEpisodeNotFound
 	}
 	if err != nil {
-		return models.EpisodeDossierView{}, fmt.Errorf("%w: %v", ErrDossierBuild, err)
+		return workspaceView.EpisodeDossierView{}, fmt.Errorf("%w: %v", ErrDossierBuild, err)
 	}
 	facts := projectionWorkspace.EpisodeToRuntimeFacts(ep)
-	recalls := []models.MemoryRecallView{}
+	recalls := []workspaceView.MemoryRecallView{}
 	if s.BuildMemoryRecalls != nil {
 		r, recallErr := s.BuildMemoryRecalls(ctx, ep, s.MemoryStore)
 		if recallErr != nil {
@@ -170,28 +170,28 @@ func (s *Service) GetEpisodeDossier(ctx context.Context, episodeID string) (mode
 		}
 	}
 	if s.BuildEpisodeDossier == nil {
-		return models.EpisodeDossierView{}, fmt.Errorf("%w: dossier builder unavailable", ErrDossierBuild)
+		return workspaceView.EpisodeDossierView{}, fmt.Errorf("%w: dossier builder unavailable", ErrDossierBuild)
 	}
 	return s.BuildEpisodeDossier(ep, facts, recalls), nil
 }
 
 // GetEpisodeMemoryRecalls returns recall list for one episode.
-func (s *Service) GetEpisodeMemoryRecalls(ctx context.Context, episodeID string) (models.MemoryRecallListView, error) {
+func (s *Service) GetEpisodeMemoryRecalls(ctx context.Context, episodeID string) (workspaceView.MemoryRecallListView, error) {
 	ep, err := s.Episodes.Get(ctx, episodeID)
 	if errors.Is(err, store.ErrNotFound) {
-		return models.MemoryRecallListView{}, ErrEpisodeNotFound
+		return workspaceView.MemoryRecallListView{}, ErrEpisodeNotFound
 	}
 	if err != nil {
-		return models.MemoryRecallListView{}, fmt.Errorf("%w: %v", ErrMemoryRecallSearch, err)
+		return workspaceView.MemoryRecallListView{}, fmt.Errorf("%w: %v", ErrMemoryRecallSearch, err)
 	}
 	if s.BuildMemoryRecalls == nil {
-		return models.MemoryRecallListView{}, fmt.Errorf("%w: memory recall builder unavailable", ErrMemoryRecallSearch)
+		return workspaceView.MemoryRecallListView{}, fmt.Errorf("%w: memory recall builder unavailable", ErrMemoryRecallSearch)
 	}
 	recalls, err := s.BuildMemoryRecalls(ctx, ep, s.MemoryStore)
 	if err != nil {
-		return models.MemoryRecallListView{}, fmt.Errorf("%w: %v", ErrMemoryRecallSearch, err)
+		return workspaceView.MemoryRecallListView{}, fmt.Errorf("%w: %v", ErrMemoryRecallSearch, err)
 	}
-	return models.MemoryRecallListView{
+	return workspaceView.MemoryRecallListView{
 		Items:              recalls,
 		ImplementationNote: "keyword_overlap",
 	}, nil

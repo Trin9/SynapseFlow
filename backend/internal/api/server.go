@@ -1537,9 +1537,9 @@ func (s *Server) handleGetEpisodeMemoryRecalls(c *gin.Context) {
 // search yields no results.  Returns a non-nil error only when the store is
 // present but Search itself fails, allowing callers to distinguish "no match"
 // from "store fault".
-func buildMemoryRecallsForEpisode(ctx context.Context, ep *models.Episode, expStore memory.ExperienceStore) ([]models.MemoryRecallView, error) {
+func buildMemoryRecallsForEpisode(ctx context.Context, ep *models.Episode, expStore memory.ExperienceStore) ([]workspaceView.MemoryRecallView, error) {
 	if expStore == nil || ep == nil {
-		return []models.MemoryRecallView{}, nil
+		return []workspaceView.MemoryRecallView{}, nil
 	}
 
 	// Build free-text search corpus from trigger payload, evidence labels, and
@@ -1586,13 +1586,13 @@ func buildMemoryRecallsForEpisode(ctx context.Context, ep *models.Episode, expSt
 
 	experiences, err := expStore.Search(ctx, query)
 	if err != nil {
-		return []models.MemoryRecallView{}, err
+		return []workspaceView.MemoryRecallView{}, err
 	}
 	if len(experiences) == 0 {
-		return []models.MemoryRecallView{}, nil
+		return []workspaceView.MemoryRecallView{}, nil
 	}
 
-	recalls := make([]models.MemoryRecallView, 0, len(experiences))
+	recalls := make([]workspaceView.MemoryRecallView, 0, len(experiences))
 	for _, exp := range experiences {
 		// Map float score → confidence label consistent with EpisodeConfidence
 		// vocabulary used elsewhere in the codebase.
@@ -1616,7 +1616,7 @@ func buildMemoryRecallsForEpisode(ctx context.Context, ep *models.Episode, expSt
 			matchedPattern = exp.AlertType
 		}
 
-		recalls = append(recalls, models.MemoryRecallView{
+		recalls = append(recalls, workspaceView.MemoryRecallView{
 			ID:                exp.ID,
 			Title:             title,
 			Summary:           exp.Summary,
@@ -1765,7 +1765,7 @@ func buildReplaySliceView(ep *models.Episode, trace []models.ProcessTraceEntryVi
 }
 
 // buildEpisodeDossier constructs an EpisodeDossierView from an episode and its facts.
-func buildEpisodeDossier(ep *models.Episode, facts []models.RuntimeFactView, recalls []models.MemoryRecallView) models.EpisodeDossierView {
+func buildEpisodeDossier(ep *models.Episode, facts []models.RuntimeFactView, recalls []workspaceView.MemoryRecallView) workspaceView.EpisodeDossierView {
 	display := models.DossierDisplayView{}
 	if ep.Verdict != nil {
 		display.Verdict = string(ep.Verdict.Result)
@@ -1797,10 +1797,10 @@ func buildEpisodeDossier(ep *models.Episode, facts []models.RuntimeFactView, rec
 	}
 
 	// Expected behaviors derived from Verdict's causal chain.
-	var expectedBehaviors []models.ExpectedBehaviorView
+	var expectedBehaviors []workspaceView.ExpectedBehaviorView
 	if ep.Verdict != nil {
 		for i, link := range ep.Verdict.CausalChain {
-			expectedBehaviors = append(expectedBehaviors, models.ExpectedBehaviorView{
+			expectedBehaviors = append(expectedBehaviors, workspaceView.ExpectedBehaviorView{
 				ID:          fmt.Sprintf("causal_%d", i),
 				Title:       fmt.Sprintf("Causal Factor %d", i+1),
 				Body:        link,
@@ -1811,10 +1811,10 @@ func buildEpisodeDossier(ep *models.Episode, facts []models.RuntimeFactView, rec
 		}
 	}
 	// Verdict bridge derived from recommendations.
-	var verdictBridge []models.VerdictBridgeItemView
+	var verdictBridge []workspaceView.VerdictBridgeItemView
 	if ep.Verdict != nil {
 		for i, rec := range ep.Verdict.Recommendations {
-			verdictBridge = append(verdictBridge, models.VerdictBridgeItemView{
+			verdictBridge = append(verdictBridge, workspaceView.VerdictBridgeItemView{
 				ID:       fmt.Sprintf("rec_%d", i),
 				Title:    fmt.Sprintf("Recommendation %d", i+1),
 				Body:     rec,
@@ -1822,12 +1822,17 @@ func buildEpisodeDossier(ep *models.Episode, facts []models.RuntimeFactView, rec
 			})
 		}
 	}
-	return models.EpisodeDossierView{
-		Episode: models.DossierEpisodeRefView{
+	return workspaceView.EpisodeDossierView{
+		Episode: workspaceView.DossierEpisodeRefView{
 			EpisodeID: ep.ID,
 			Label:     string(ep.EpisodeType),
 		},
-		Display:          display,
+		Display: workspaceView.DossierDisplayView{
+			Verdict:      display.Verdict,
+			VerdictLabel: display.VerdictLabel,
+			Summary:      display.Summary,
+			Banner:       display.Banner,
+		},
 		ExpectedBehavior: expectedBehaviors,
 		VerdictBridge:    verdictBridge,
 		RuntimeFacts:     facts,

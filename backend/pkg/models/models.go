@@ -637,70 +637,10 @@ type RuntimeFactView struct {
 	HighlightLines []int  `json:"highlight_lines,omitempty"`
 }
 
-// ExpectedBehaviorView is a single entry in the Dossier left column.
-// source_type: "sop" (Verified SOP) | "ai" (AI Hypothesized)
-type ExpectedBehaviorView struct {
-	ID           string `json:"id"`
-	Title        string `json:"title"`
-	Body         string `json:"body"`
-	FocusKey     string `json:"focus_key,omitempty"`
-	SourceType   string `json:"source_type,omitempty"`   // "sop" | "ai"
-	SourceLabel  string `json:"source_label,omitempty"`  // "Verified SOP" | "AI Hypothesized"
-	SourceDetail string `json:"source_detail,omitempty"` // explanation of source
-}
-
-// VerdictBridgeItemView is a single entry in the Dossier middle column.
-type VerdictBridgeItemView struct {
-	ID       string `json:"id"`
-	Title    string `json:"title"`
-	Body     string `json:"body"`
-	FocusKey string `json:"focus_key,omitempty"`
-}
-
-// DossierEpisodeRefView is the lightweight episode reference in a dossier.
-type DossierEpisodeRefView struct {
-	EpisodeID string `json:"episode_id"`
-	Label     string `json:"label"`
-}
-
 // DossierDisplayView holds the display-layer state of a dossier.
 type DossierDisplayView struct {
 	Verdict      string  `json:"verdict,omitempty"`
 	VerdictLabel string  `json:"verdict_label,omitempty"`
 	Summary      string  `json:"summary,omitempty"`
 	Banner       *string `json:"banner"` // null when no banner
-}
-
-// EpisodeDossierView is the full dossier payload returned by
-// GET /api/v1/executions/:execution_id/episodes/:episode_id/dossier.
-type EpisodeDossierView struct {
-	Episode          DossierEpisodeRefView   `json:"episode"`
-	Display          DossierDisplayView      `json:"display"`
-	ExpectedBehavior []ExpectedBehaviorView  `json:"expected_behavior"`
-	VerdictBridge    []VerdictBridgeItemView `json:"verdict_bridge"`
-	RuntimeFacts     []RuntimeFactView       `json:"runtime_facts"`
-	Handles          []EpisodeHandle         `json:"handles"`
-	MemoryRecalls    []MemoryRecallView      `json:"memory_recalls"`
-	HumanAuditTrail  []HumanIntervention     `json:"human_audit_trail"`
-}
-
-// MemoryRecallView is a single memory recall item.
-// Note: current implementation uses keyword overlap scoring, not semantic vector recall.
-// confidence reflects keyword overlap degree, not semantic similarity.
-type MemoryRecallView struct {
-	ID                string `json:"id"`
-	Title             string `json:"title"`
-	Summary           string `json:"summary"`
-	MatchedPattern    string `json:"matched_pattern,omitempty"`
-	Confidence        string `json:"confidence,omitempty"` // "high" | "medium" | "low"
-	SourceExecutionID string `json:"source_execution_id,omitempty"`
-	Caution           string `json:"caution,omitempty"`
-	Recommendation    string `json:"recommendation,omitempty"`
-}
-
-// MemoryRecallListView wraps the memory recall list response.
-// implementation_note is fixed to "keyword_overlap" until vector recall is introduced.
-type MemoryRecallListView struct {
-	Items              []MemoryRecallView `json:"items"`
-	ImplementationNote string             `json:"implementation_note"` // "keyword_overlap"
 }
