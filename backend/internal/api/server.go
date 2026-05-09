@@ -15,6 +15,7 @@ import (
 	"github.com/Trin9/SynapseFlow/backend/internal/api/dto"
 	appExecution "github.com/Trin9/SynapseFlow/backend/internal/application/execution"
 	appWorkspace "github.com/Trin9/SynapseFlow/backend/internal/application/workspace"
+	workspaceView "github.com/Trin9/SynapseFlow/backend/internal/application/workspace/view"
 	"github.com/Trin9/SynapseFlow/backend/internal/auth"
 	"github.com/Trin9/SynapseFlow/backend/internal/config"
 	domainEpisode "github.com/Trin9/SynapseFlow/backend/internal/domain/episode"
@@ -1666,8 +1667,8 @@ func (s *Server) handleGetComparisonTarget(c *gin.Context) {
 // ---------------------------------------------------------------------------
 
 // buildTriggerContextView constructs a TriggerContextView from execution + episode data.
-func buildTriggerContextView(exec *models.Execution, episodes []*models.Episode) models.TriggerContextView {
-	view := models.TriggerContextView{
+func buildTriggerContextView(exec *models.Execution, episodes []*models.Episode) workspaceView.TriggerContextView {
+	view := workspaceView.TriggerContextView{
 		Title:   fmt.Sprintf("Trigger — %s", exec.DAGName),
 		Summary: fmt.Sprintf("Execution %s triggered on %s", exec.ID[:8], exec.StartedAt.Format(time.RFC3339)),
 	}
@@ -1689,9 +1690,9 @@ func buildTriggerContextView(exec *models.Execution, episodes []*models.Episode)
 			}
 			return ""
 		}
-		section := models.TriggerContextSectionView{
+		section := workspaceView.TriggerContextSectionView{
 			Title: "Alert",
-			Fields: []models.TriggerContextFieldView{
+			Fields: []workspaceView.TriggerContextFieldView{
 				{Label: "Trigger Type", Value: string(t.Type), Range: [2]int{0, 0}},
 				{Label: "Alert Type", Value: payloadStr("alert_type"), Range: [2]int{0, 0}},
 				{Label: "Service", Value: payloadStr("service_name"), Range: [2]int{0, 0}},
@@ -1712,14 +1713,14 @@ func buildTriggerContextView(exec *models.Execution, episodes []*models.Episode)
 		// Investigation context section.
 		if ep.InvestigationContext != nil {
 			ic := ep.InvestigationContext
-			icSection := models.TriggerContextSectionView{
+			icSection := workspaceView.TriggerContextSectionView{
 				Title: "Investigation",
-				Fields: []models.TriggerContextFieldView{
+				Fields: []workspaceView.TriggerContextFieldView{
 					{Label: "Hypothesis", Value: ic.Hypothesis},
 				},
 			}
 			if len(ic.KnownSignals) > 0 {
-				icSection.Fields = append(icSection.Fields, models.TriggerContextFieldView{
+				icSection.Fields = append(icSection.Fields, workspaceView.TriggerContextFieldView{
 					Label: "Known Signals",
 					Value: strings.Join(ic.KnownSignals, ", "),
 				})

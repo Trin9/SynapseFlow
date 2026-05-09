@@ -22,7 +22,7 @@ type Service struct {
 		WriteReviewState(ctx context.Context, execID string, req domainEpisode.ReviewActionInput) error
 	}
 
-	BuildTriggerContextView func(exec *models.Execution, episodes []*models.Episode) models.TriggerContextView
+	BuildTriggerContextView func(exec *models.Execution, episodes []*models.Episode) workspaceView.TriggerContextView
 	BuildReplaySliceView    func(ep *models.Episode, trace []models.ProcessTraceEntryView, percent int) models.ReplaySliceView
 	BuildComparisonSummary  func(current, historical *models.Execution) ComparisonSummaryView
 	BuildEpisodeDossier     func(ep *models.Episode, facts []models.RuntimeFactView, recalls []models.MemoryRecallView) models.EpisodeDossierView
@@ -58,20 +58,20 @@ func (s *Service) GetExecutionSummary(ctx context.Context, executionID string) (
 }
 
 // GetTriggerContext returns trigger context projection for one execution.
-func (s *Service) GetTriggerContext(ctx context.Context, executionID string) (models.TriggerContextView, error) {
+func (s *Service) GetTriggerContext(ctx context.Context, executionID string) (workspaceView.TriggerContextView, error) {
 	exec, err := s.Executions.Get(ctx, executionID)
 	if errors.Is(err, store.ErrNotFound) {
-		return models.TriggerContextView{}, ErrExecutionNotFound
+		return workspaceView.TriggerContextView{}, ErrExecutionNotFound
 	}
 	if err != nil {
-		return models.TriggerContextView{}, fmt.Errorf("%w: %v", ErrExecutionGet, err)
+		return workspaceView.TriggerContextView{}, fmt.Errorf("%w: %v", ErrExecutionGet, err)
 	}
 	episodes, err := s.Episodes.ListByExecution(ctx, executionID)
 	if err != nil {
-		return models.TriggerContextView{}, fmt.Errorf("%w: %v", ErrEpisodeList, err)
+		return workspaceView.TriggerContextView{}, fmt.Errorf("%w: %v", ErrEpisodeList, err)
 	}
 	if s.BuildTriggerContextView == nil {
-		return models.TriggerContextView{}, fmt.Errorf("%w: trigger context builder unavailable", ErrExecutionGet)
+		return workspaceView.TriggerContextView{}, fmt.Errorf("%w: trigger context builder unavailable", ErrExecutionGet)
 	}
 	return s.BuildTriggerContextView(exec, episodes), nil
 }

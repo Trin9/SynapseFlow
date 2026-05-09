@@ -607,27 +607,6 @@ type EpisodeSummaryView struct {
 	DefaultReplayPercent int                `json:"default_replay_percent"`
 }
 
-// TriggerContextFieldView is a single key-value field in a trigger context section.
-type TriggerContextFieldView struct {
-	Label string `json:"label"`
-	Value string `json:"value"`
-	Range [2]int `json:"range"` // replay range [start, end] at which this field becomes visible
-}
-
-// TriggerContextSectionView groups related trigger context fields.
-type TriggerContextSectionView struct {
-	Title  string                    `json:"title"`
-	Fields []TriggerContextFieldView `json:"fields"`
-}
-
-// TriggerContextView is the full trigger context returned by
-// GET /api/v1/executions/:execution_id/trigger-context.
-type TriggerContextView struct {
-	Title    string                      `json:"title"`
-	Summary  string                      `json:"summary"`
-	Sections []TriggerContextSectionView `json:"sections"`
-}
-
 // ReplayCheckpointView describes the narrative at a given replay position.
 type ReplayCheckpointView struct {
 	Label    string `json:"label"`
