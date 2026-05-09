@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strings"
 	"sync"
 
 	"github.com/Trin9/SynapseFlow/backend/internal/audit"
+	domainEpisode "github.com/Trin9/SynapseFlow/backend/internal/domain/episode"
 	"github.com/Trin9/SynapseFlow/backend/pkg/models"
 )
 
@@ -546,29 +546,14 @@ func projectEpisodeToSummary(ep *models.Episode) models.EpisodeSummaryView {
 		sv.Confidence = ep.Verdict.Confidence
 		sv.Display = models.EpisodeDisplayView{
 			Verdict:      string(ep.Verdict.Result),
-			VerdictLabel: verdictLabel(ep.Verdict.Result),
+			VerdictLabel: domainEpisode.VerdictLabelFromResult(ep.Verdict.Result),
 			Summary:      truncateStr(ep.Verdict.Conclusion, 120),
 		}
 	}
-	// CR-013: promote human review decision into display banner and VerdictLabel.
-	// The last relevant action wins for VerdictLabel; the banner is set only once
-	// (on the first override/correction event).
-	bannerSet := false
-	for _, hi := range ep.HumanInterventions {
-		switch hi.Action {
-		case models.HumanActionStateOverride, models.HumanActionHypothesisCorrected:
-			if !bannerSet {
-				msg := fmt.Sprintf("Human override: %s", hi.Detail)
-				sv.Display.Banner = &msg
-				bannerSet = true
-			}
-			sv.Display.VerdictLabel = "Overridden (Human)"
-		case models.HumanActionResumed:
-			sv.Display.VerdictLabel = "Approved"
-		case models.HumanActionAborted:
-			sv.Display.VerdictLabel = "Aborted"
-		}
-	}
+	tmpDisplay := models.DossierDisplayView{Banner: sv.Display.Banner, VerdictLabel: sv.Display.VerdictLabel}
+	domainEpisode.ApplyHumanReviewDisplay(ep, &tmpDisplay)
+	sv.Display.Banner = tmpDisplay.Banner
+	sv.Display.VerdictLabel = tmpDisplay.VerdictLabel
 	return sv
 }
 
@@ -609,7 +594,7 @@ func projectEpisodeToProcessTrace(ep *models.Episode) []models.ProcessTraceEntry
 		entries = append(entries, models.ProcessTraceEntryView{
 			ID:     hi.NodeID + "_human",
 			Stage:  "Human Review",
-			Title:  humanActionLabel(hi.Action),
+			Title:  domainEpisode.HumanActionLabel(hi.Action),
 			Detail: truncateStr(hi.Detail, 200),
 			Status: "success",
 			Range:  [2]int{100, 100},
@@ -624,7 +609,7 @@ func projectEpisodeToProcessTrace(ep *models.Episode) []models.ProcessTraceEntry
 		entries = append(entries, models.ProcessTraceEntryView{
 			ID:     ep.ID + "_verdict",
 			Stage:  "Verdict",
-			Title:  verdictLabel(ep.Verdict.Result),
+			Title:  domainEpisode.VerdictLabelFromResult(ep.Verdict.Result),
 			Detail: truncateStr(ep.Verdict.Conclusion, 200),
 			Status: status,
 			Range:  [2]int{100, 100},
@@ -686,23 +671,16 @@ func projectEpisodesToReviewState(episodes []*models.Episode) *models.ReviewStat
 				// Suspension event: execution is now pending review.
 				// Only update the action label and note; do NOT overwrite actor/acted_at
 				// or change the status — the execution has not yet been reviewed.
-				state.ActionLabel = humanActionLabel(hi.Action)
+				state.ActionLabel = domainEpisode.HumanActionLabel(hi.Action)
 				state.Note = hi.Detail
 				continue
 			}
 			t := hi.Timestamp
 			state.Actor = hi.Actor
 			state.ActedAt = &t
-			state.ActionLabel = humanActionLabel(hi.Action)
+			state.ActionLabel = domainEpisode.HumanActionLabel(hi.Action)
 			state.Note = hi.Detail
-			switch hi.Action {
-			case models.HumanActionAborted:
-				state.Status = "aborted"
-			case models.HumanActionResumed:
-				state.Status = "approved"
-			default:
-				state.Status = "overridden"
-			}
+			state.Status = domainEpisode.ReviewStateFromAction(hi.Action)
 		}
 	}
 	return state
@@ -747,41 +725,5 @@ func nodeTypeToSourceType(nt models.NodeType) string {
 		return "json"
 	default:
 		return "text"
-	}
-}
-
-// verdictLabel converts an EpisodeResult to a human-readable display label.
-func verdictLabel(r models.EpisodeResult) string {
-	switch r {
-	case models.EpisodeResultPass:
-		return "Pass"
-	case models.EpisodeResultFail:
-		return "Fail"
-	case models.EpisodeResultInconclusive:
-		return "Inconclusive"
-	default:
-		return strings.Title(string(r))
-	}
-}
-
-// humanActionLabel converts a HumanInterventionAction to a display label.
-func humanActionLabel(a models.HumanInterventionAction) string {
-	switch a {
-	case models.HumanActionStateOverride:
-		return "State Override"
-	case models.HumanActionEvidenceMarkedInvalid:
-		return "Evidence Marked Invalid"
-	case models.HumanActionHandleInjected:
-		return "Handle Injected"
-	case models.HumanActionHypothesisCorrected:
-		return "Hypothesis Corrected"
-	case models.HumanActionSuspended:
-		return "Review Requested"
-	case models.HumanActionResumed:
-		return "Resumed"
-	case models.HumanActionAborted:
-		return "Aborted"
-	default:
-		return string(a)
 	}
 }

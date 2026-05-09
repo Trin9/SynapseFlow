@@ -12,8 +12,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Trin9/SynapseFlow/backend/internal/api/dto"
+	appExecution "github.com/Trin9/SynapseFlow/backend/internal/application/execution"
+	appWorkspace "github.com/Trin9/SynapseFlow/backend/internal/application/workspace"
 	"github.com/Trin9/SynapseFlow/backend/internal/auth"
 	"github.com/Trin9/SynapseFlow/backend/internal/config"
+	domainEpisode "github.com/Trin9/SynapseFlow/backend/internal/domain/episode"
 	"github.com/Trin9/SynapseFlow/backend/internal/engine"
 	"github.com/Trin9/SynapseFlow/backend/internal/llm"
 	"github.com/Trin9/SynapseFlow/backend/internal/mcp"
@@ -66,6 +70,8 @@ type Server struct {
 	// episodeWriter is the shared write-permission layer for Episode objects.
 	// Injected into executors at startup; also used by API handlers (e.g. resume).
 	episodeWriter *engine.EpisodeWriter
+	execService   *appExecution.Service
+	workspaceSvc  *appWorkspace.Service
 }
 
 // apiError is the unified error response format.
@@ -325,6 +331,36 @@ func NewServer(opts ...ServerOption) *Server {
 	retriever := &memory.Retriever{Store: s.memory}
 	s.scheduler = engine.NewScheduler(executors, retriever)
 	s.scheduler.SetEpisodeStore(s.episodes)
+	s.execService = &appExecution.Service{
+		Scheduler:        s.scheduler,
+		DAGs:             s.dags,
+		Executions:       s.execs,
+		Episodes:         s.episodes,
+		EpisodeWriter:    s.episodeWriter,
+		MetricsCollector: s.metricsCollector,
+		Notifier:         s.notifier,
+		GetNotifier: func() notify.Sender {
+			return s.notifier
+		},
+		Extractor:                  s.extractor,
+		ResolveSlackURL:            s.resolveSlackURL,
+		BuildExecutionNotification: buildExecutionNotification,
+	}
+	s.workspaceSvc = &appWorkspace.Service{
+		Executions:              s.execs,
+		Episodes:                s.episodes,
+		MemoryStore:             s.memory,
+		EpisodeWriter:           s.episodeWriter,
+		BuildTriggerContextView: buildTriggerContextView,
+		BuildReplaySliceView:    buildReplaySliceView,
+		BuildComparisonSummary:  buildComparisonSummary,
+		BuildEpisodeDossier:     buildEpisodeDossier,
+		BuildMemoryRecalls:      buildMemoryRecallsForEpisode,
+		LogMemoryRecallWarning: func(episodeID string, err error) {
+			logger.L().Warnw("memory recall search failed; dossier served with empty recalls",
+				"episode_id", episodeID, "error", err)
+		},
+	}
 
 	s.setupRouter()
 	return s
@@ -750,13 +786,15 @@ func (s *Server) handleRunInline(c *gin.Context) {
 }
 
 func (s *Server) runWorkflow(c *gin.Context, dag *models.DAGConfig) {
-	// Safety: validate the DAG again for saved DAG runs.
-	if _, err := engine.ParseDAG(dag); err != nil {
+	if s.execService == nil {
+		writeError(c, http.StatusInternalServerError, "internal", "execution service unavailable", nil)
+		return
+	}
+	exec, err := s.execService.RunWorkflow(dag, nil, "api")
+	if err != nil {
 		writeError(c, http.StatusBadRequest, "invalid_dag", "invalid DAG", err.Error())
 		return
 	}
-
-	exec := s.startExecution(dag, nil, "api")
 	c.JSON(http.StatusAccepted, runExecutionResponse{
 		ExecutionID: exec.ID,
 		Status:      exec.Status,
@@ -764,146 +802,18 @@ func (s *Server) runWorkflow(c *gin.Context, dag *models.DAGConfig) {
 }
 
 func (s *Server) startExecution(dag *models.DAGConfig, initialState *models.GlobalState, source string) *models.Execution {
-	execID := generateID()
-	exec := &models.Execution{
-		ID:        execID,
-		DAGID:     dag.ID,
-		DAGName:   dag.Name,
-		Status:    models.StatusRunning,
-		StartedAt: time.Now(),
-	}
-	if err := s.execs.Create(context.Background(), exec); err != nil {
-		logger.L().Errorw("failed to create execution", "execution_id", execID, "error", err)
-	}
-
-	// Auto-create Episode when the DAG metadata declares an episode_type.
-	// The resulting episode_id is injected into GlobalState as "__episode_id__"
-	// so every ScriptExecutor and LLMExecutor can pick it up automatically.
-	if epType, ok := dag.Metadata["episode_type"]; ok && epType != "" {
-		ep := &models.Episode{
-			ID:            generateID(),
-			ExecID:        execID,
-			EpisodeType:   models.EpisodeType(epType),
-			Status:        models.EpisodeStatusPending,
-			Trigger:       &models.EpisodeTrigger{Type: models.EpisodeTriggerManual},
-			LoopGuard:     models.EpisodeLoopGuard{MaxIterations: 10},
-			SchemaVersion: 1,
-			CreatedAt:     time.Now().UTC(),
-			UpdatedAt:     time.Now().UTC(),
-		}
-		if initialState == nil {
-			initialState = models.NewGlobalState()
-		}
-		if err := s.episodes.Create(context.Background(), ep); err != nil {
-			logger.L().Warnw("failed to auto-create episode", "exec_id", execID, "error", err)
-		} else {
-			initialState.Set("__episode_id__", ep.ID)
-			logger.L().Infow("auto-created episode", "exec_id", execID, "episode_id", ep.ID, "type", epType)
+	if s.execService == nil {
+		logger.L().Errorw("execution service unavailable")
+		return &models.Execution{
+			ID:        generateID(),
+			DAGID:     dag.ID,
+			DAGName:   dag.Name,
+			Status:    models.StatusFailed,
+			Error:     "execution service unavailable",
+			StartedAt: time.Now(),
 		}
 	}
-
-	// Execute asynchronously. Frontend polls /executions/:id/nodes.
-	// Do not inherit the request context for async execution, otherwise the
-	// background run will be canceled as soon as the HTTP request completes.
-	ctx := context.Background()
-	go func(execID string, dag *models.DAGConfig) {
-		result := s.scheduler.Execute(ctx, dag, initialState, nil)
-		now := time.Now()
-
-		exec, err := s.execs.Get(ctx, execID)
-		if err != nil {
-			logger.L().Errorw("failed to load execution for update", "execution_id", execID, "error", err)
-			return
-		}
-
-		exec.Duration = result.Duration
-		exec.Results = result.Results
-		exec.State = result.State // Persist the state for resume
-
-		if result.Err != nil || result.Status == models.StatusFailed {
-			exec.Status = models.StatusFailed
-			if result.Err != nil {
-				exec.Error = result.Err.Error()
-			}
-			exec.EndedAt = &now
-		} else if result.Status == models.StatusSuspended {
-			exec.Status = models.StatusSuspended
-			// Do not set EndedAt for suspended execution
-		} else {
-			exec.Status = models.StatusCompleted
-			exec.EndedAt = &now
-		}
-		if err := s.execs.Update(ctx, exec); err != nil {
-			logger.L().Errorw("failed to persist execution update", "execution_id", execID, "error", err)
-		}
-		if err := s.execs.SaveNodeResults(ctx, execID, result.Results); err != nil {
-			logger.L().Errorw("failed to persist node results", "execution_id", execID, "error", err)
-		}
-
-		// Auto-close Episode when the DAG reaches a terminal state.
-		// The episode_id was injected into GlobalState as "__episode_id__" at
-		// startExecution time.  We only advance in_progress episodes — a verdict
-		// written by an llm node may have already set the status to converged.
-		// TODO: remove the in-memory-only note once Postgres Episode migration lands.
-		if episodeID := result.State.GetString("__episode_id__"); episodeID != "" {
-			if ep, epErr := s.episodes.Get(ctx, episodeID); epErr == nil {
-				if ep.Status == models.EpisodeStatusInProgress {
-					switch exec.Status {
-					case models.StatusCompleted:
-						ep.Status = models.EpisodeStatusConverged
-					case models.StatusFailed:
-						ep.Status = models.EpisodeStatusFailed
-					}
-					ep.UpdatedAt = time.Now().UTC()
-					if err := s.episodes.Update(ctx, ep); err != nil {
-						logger.L().Warnw("failed to auto-close episode", "episode_id", episodeID, "exec_status", exec.Status, "error", err)
-					}
-				}
-			}
-		}
-		if exec.Status == models.StatusSuspended {
-			checkpoint := &models.ExecutionCheckpoint{
-				ExecutionID: exec.ID,
-				DAGID:       exec.DAGID,
-				State:       result.State.Snapshot(),
-				LoopCounts:  result.State.LoopCountsSnapshot(),
-				UpdatedAt:   now,
-			}
-			if err := s.execs.SaveCheckpoint(ctx, checkpoint); err != nil {
-				logger.L().Errorw("failed to persist checkpoint", "execution_id", execID, "error", err)
-			}
-		}
-
-		// Record metrics for this execution
-		s.metricsCollector.RecordExecution(exec.Status, result.Duration)
-		for _, r := range result.Results {
-			s.metricsCollector.RecordNode(r.NodeType, r.Duration)
-			if r.TokensIn+r.TokensOut > 0 {
-				s.metricsCollector.RecordLLMTokens(string(r.NodeType), r.TokensIn+r.TokensOut)
-			}
-		}
-
-		if exec.Status == models.StatusCompleted && s.extractor != nil {
-			go func(execSnapshot *models.Execution, dagSnapshot *models.DAGConfig) {
-				if _, err := s.extractor.Extract(context.Background(), dagSnapshot, execSnapshot); err != nil {
-					logger.L().Warnw("Memory extraction failed", "execution_id", execSnapshot.ID, "error", err)
-				}
-			}(cloneExecution(exec), dag)
-		}
-
-		// Send Slack notification on completion or failure
-		notifierURL := s.resolveSlackURL(dag)
-		if notifierURL != "" && s.notifier != nil {
-			msg := buildExecutionNotification(exec, dag, result.Duration)
-			go func() {
-				if err := s.notifier.SendExecutionResult(context.Background(), notifierURL, msg); err != nil {
-					logger.L().Warnw("Slack notification failed", "execution_id", execID, "error", err)
-				}
-			}()
-		}
-	}(execID, dag)
-
-	return exec
+	return s.execService.StartExecution(dag, initialState, source)
 }
 
 // Get Execution returns execution details by ID.
@@ -1114,18 +1024,6 @@ func getValidatedDAG(c *gin.Context) (*models.DAGConfig, bool) {
 	return dag, true
 }
 
-func cloneExecution(exec *models.Execution) *models.Execution {
-	if exec == nil {
-		return nil
-	}
-	clone := *exec
-	if exec.Results != nil {
-		clone.Results = append([]models.NodeResult(nil), exec.Results...)
-	}
-	clone.State = exec.State.Clone()
-	return &clone
-}
-
 // handleResumeExecution resumes a suspended (human-in-the-loop) execution.
 // @Summary Resume Execution
 // @Description Resumes a suspended execution.
@@ -1143,159 +1041,45 @@ func cloneExecution(exec *models.Execution) *models.Execution {
 func (s *Server) handleResumeExecution(c *gin.Context) {
 	id := c.Param("id")
 
-	// Optional body: actor/action/detail for HumanIntervention recording.
 	var resumeBody resumeExecutionRequest
-	// Ignore parse error — body is fully optional.
 	_ = c.ShouldBindJSON(&resumeBody)
 
-	exec, err := s.execs.Get(c.Request.Context(), id)
-	if errors.Is(err, store.ErrNotFound) {
-		writeError(c, http.StatusNotFound, "not_found", "Execution not found", nil)
-		return
-	}
+	exec, err := s.execService.ResumeExecution(c.Request.Context(), appExecution.ResumeInput{
+		ExecutionID: id,
+		Actor:       resumeBody.Actor,
+		Action:      resumeBody.Action,
+		Detail:      resumeBody.Detail,
+	})
 	if err != nil {
-		writeError(c, http.StatusInternalServerError, "execution_get_failed", "failed to get execution", err.Error())
-		return
-	}
-	if exec.Status != models.StatusSuspended {
-		writeError(c, http.StatusConflict, "not_suspended", "execution is not suspended", exec.Status)
-		return
-	}
-	checkpoint, err := s.execs.GetCheckpoint(c.Request.Context(), id)
-	if err != nil && !errors.Is(err, store.ErrNotFound) {
-		writeError(c, http.StatusInternalServerError, "checkpoint_get_failed", "failed to load checkpoint", err.Error())
-		return
-	}
-	if checkpoint != nil {
-		exec.State = models.NewGlobalStateFromSnapshot(checkpoint.State, checkpoint.LoopCounts)
-	}
-
-	// Record the human intervention in the Episode (if one is linked to this execution).
-	if s.episodeWriter != nil {
-		if episodeID := exec.State.GetString("__episode_id__"); episodeID != "" {
-			actor := resumeBody.Actor
-			if actor == "" {
-				actor = "operator"
+		switch {
+		case errors.Is(err, appExecution.ErrExecutionNotFound):
+			writeError(c, http.StatusNotFound, "not_found", "Execution not found", nil)
+			return
+		case errors.Is(err, appExecution.ErrCheckpointGet):
+			writeError(c, http.StatusInternalServerError, "checkpoint_get_failed", "failed to load checkpoint", err.Error())
+			return
+		case errors.Is(err, appExecution.ErrDAGNotFoundForResume):
+			writeError(c, http.StatusUnprocessableEntity, "dag_not_found", "original DAG not available for resume", nil)
+			return
+		case errors.Is(err, appExecution.ErrDAGGet):
+			writeError(c, http.StatusInternalServerError, "dag_get_failed", "failed to get DAG", err.Error())
+			return
+		case errors.Is(err, appExecution.ErrExecutionUpdate):
+			writeError(c, http.StatusInternalServerError, "execution_update_failed", "failed to update execution", err.Error())
+			return
+		default:
+			var notSuspended appExecution.NotSuspendedError
+			if errors.As(err, &notSuspended) {
+				writeError(c, http.StatusConflict, "not_suspended", "execution is not suspended", notSuspended.Status)
+				return
 			}
-			action := models.HumanInterventionAction(resumeBody.Action)
-			if action == "" {
-				action = models.HumanActionResumed
-			}
-			if err := s.episodeWriter.AppendHumanIntervention(
-				c.Request.Context(), episodeID, "", actor, action, resumeBody.Detail,
-			); err != nil {
-				logger.L().Warnw("failed to record human intervention on resume",
-					"episode_id", episodeID, "execution_id", id, "error", err)
-			}
-		}
-	}
-
-	// Build the set of completed node results so we can resume from where we stopped.
-	completedNodes := make(map[string]models.NodeResult)
-	for _, res := range exec.Results {
-		if res.Status == "success" {
-			completedNodes[res.NodeID] = res
-		}
-	}
-
-	dag, err := s.dags.Get(c.Request.Context(), exec.DAGID)
-	if errors.Is(err, store.ErrNotFound) {
-		// DAG may have been created inline (not persisted); recreate from state metadata
-		writeError(c, http.StatusUnprocessableEntity, "dag_not_found", "original DAG not available for resume", nil)
-		return
-	}
-	if err != nil {
-		writeError(c, http.StatusInternalServerError, "dag_get_failed", "failed to get DAG", err.Error())
-		return
-	}
-
-	// Mark as running again and re-run remaining nodes
-	exec.Status = models.StatusRunning
-	exec.EndedAt = nil
-	if err := s.execs.Update(c.Request.Context(), exec); err != nil {
-		writeError(c, http.StatusInternalServerError, "execution_update_failed", "failed to update execution", err.Error())
-		return
-	}
-
-	ctx := context.Background()
-	go func() {
-		result := s.scheduler.Execute(ctx, dag, exec.State, completedNodes)
-		now := time.Now()
-
-		exec, err := s.execs.Get(ctx, id)
-		if err != nil {
-			logger.L().Errorw("failed to load resumed execution", "execution_id", id, "error", err)
+			writeError(c, http.StatusInternalServerError, "execution_get_failed", "failed to get execution", err.Error())
 			return
 		}
-		exec.Duration = result.Duration
-		// Merge resumed results
-		for _, r := range result.Results {
-			found := false
-			for i, existing := range exec.Results {
-				if existing.NodeID == r.NodeID {
-					exec.Results[i] = r
-					found = true
-					break
-				}
-			}
-			if !found {
-				exec.Results = append(exec.Results, r)
-			}
-		}
-		exec.State = result.State
-		if result.Err != nil || result.Status == models.StatusFailed {
-			exec.Status = models.StatusFailed
-			if result.Err != nil {
-				exec.Error = result.Err.Error()
-			}
-			exec.EndedAt = &now
-		} else if result.Status == models.StatusSuspended {
-			exec.Status = models.StatusSuspended
-		} else {
-			exec.Status = models.StatusCompleted
-			exec.EndedAt = &now
-		}
-		if err := s.execs.Update(ctx, exec); err != nil {
-			logger.L().Errorw("failed to update resumed execution", "execution_id", id, "error", err)
-		}
-		if err := s.execs.SaveNodeResults(ctx, id, exec.Results); err != nil {
-			logger.L().Errorw("failed to save resumed node results", "execution_id", id, "error", err)
-		}
-
-		// Auto-close Episode on terminal state (mirrors startExecution logic).
-		if episodeID := result.State.GetString("__episode_id__"); episodeID != "" {
-			if ep, epErr := s.episodes.Get(ctx, episodeID); epErr == nil {
-				if ep.Status == models.EpisodeStatusInProgress {
-					switch exec.Status {
-					case models.StatusCompleted:
-						ep.Status = models.EpisodeStatusConverged
-					case models.StatusFailed:
-						ep.Status = models.EpisodeStatusFailed
-					}
-					ep.UpdatedAt = time.Now().UTC()
-					if err := s.episodes.Update(ctx, ep); err != nil {
-						logger.L().Warnw("failed to auto-close resumed episode", "episode_id", episodeID, "exec_status", exec.Status, "error", err)
-					}
-				}
-			}
-		}
-		if exec.Status == models.StatusSuspended {
-			checkpoint := &models.ExecutionCheckpoint{
-				ExecutionID: exec.ID,
-				DAGID:       exec.DAGID,
-				State:       result.State.Snapshot(),
-				LoopCounts:  result.State.LoopCountsSnapshot(),
-				UpdatedAt:   now,
-			}
-			if err := s.execs.SaveCheckpoint(ctx, checkpoint); err != nil {
-				logger.L().Errorw("failed to persist resumed checkpoint", "execution_id", id, "error", err)
-			}
-		}
-	}()
-
+	}
 	c.JSON(http.StatusAccepted, runExecutionResponse{
-		ExecutionID: id,
-		Status:      models.StatusRunning,
+		ExecutionID: exec.ID,
+		Status:      exec.Status,
 	})
 }
 
@@ -1544,9 +1328,9 @@ func (s *Server) handleGetEpisode(c *gin.Context) {
 // @Router /api/v1/executions/{id}/summary [get]
 func (s *Server) handleGetExecutionSummary(c *gin.Context) {
 	id := c.Param("id")
-	summary, err := s.execs.GetExecutionSummary(c.Request.Context(), id)
+	summary, err := s.workspaceSvc.GetExecutionSummary(c.Request.Context(), id)
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
+		if errors.Is(err, appWorkspace.ErrExecutionNotFound) {
 			writeError(c, http.StatusNotFound, "not_found", "execution not found", nil)
 			return
 		}
@@ -1572,22 +1356,23 @@ func (s *Server) handleGetExecutionSummary(c *gin.Context) {
 // @Router /api/v1/executions/{id}/trigger-context [get]
 func (s *Server) handleGetTriggerContext(c *gin.Context) {
 	execID := c.Param("id")
-	ctx := c.Request.Context()
-	exec, err := s.execs.Get(ctx, execID)
+	view, err := s.workspaceSvc.GetTriggerContext(c.Request.Context(), execID)
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
+		if errors.Is(err, appWorkspace.ErrExecutionNotFound) {
 			writeError(c, http.StatusNotFound, "not_found", "execution not found", nil)
 			return
 		}
-		writeError(c, http.StatusInternalServerError, "trigger_context_error", "failed to get execution", err.Error())
+		if errors.Is(err, appWorkspace.ErrExecutionGet) {
+			writeError(c, http.StatusInternalServerError, "trigger_context_error", "failed to get execution", err.Error())
+			return
+		}
+		if errors.Is(err, appWorkspace.ErrEpisodeList) {
+			writeError(c, http.StatusInternalServerError, "trigger_context_error", "failed to list episodes", err.Error())
+			return
+		}
+		writeError(c, http.StatusInternalServerError, "trigger_context_error", "failed to get trigger context", err.Error())
 		return
 	}
-	episodes, err := s.episodes.ListByExecution(ctx, execID)
-	if err != nil {
-		writeError(c, http.StatusInternalServerError, "trigger_context_error", "failed to list episodes", err.Error())
-		return
-	}
-	view := buildTriggerContextView(exec, episodes)
 	c.JSON(http.StatusOK, view)
 }
 
@@ -1605,7 +1390,7 @@ func (s *Server) handleGetTriggerContext(c *gin.Context) {
 // @Router /api/v1/executions/{id}/review-state [get]
 func (s *Server) handleGetReviewState(c *gin.Context) {
 	execID := c.Param("id")
-	state, err := s.episodes.GetReviewStateByExecution(c.Request.Context(), execID)
+	state, err := s.workspaceSvc.GetReviewState(c.Request.Context(), execID)
 	if err != nil {
 		writeError(c, http.StatusInternalServerError, "review_state_error", "failed to get review state", err.Error())
 		return
@@ -1631,13 +1416,13 @@ func (s *Server) handleGetReviewState(c *gin.Context) {
 // @Router /api/v1/executions/{id}/review-actions [post]
 func (s *Server) handlePostReviewAction(c *gin.Context) {
 	execID := c.Param("id")
-	var req models.ReviewActionRequest
+	var req dto.ReviewActionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request body", err.Error())
 		return
 	}
-	if err := s.episodeWriter.WriteReviewState(c.Request.Context(), execID, req); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
+	if err := s.workspaceSvc.PostReviewAction(c.Request.Context(), execID, req.EpisodeID, req.Status, req.Actor, req.Note); err != nil {
+		if errors.Is(err, appWorkspace.ErrExecutionNotFound) {
 			writeError(c, http.StatusNotFound, "not_found", "execution not found", nil)
 			return
 		}
@@ -1664,26 +1449,17 @@ func (s *Server) handlePostReviewAction(c *gin.Context) {
 // @Router /api/v1/executions/{id}/episodes/{episode_id}/replay [get]
 func (s *Server) handleGetEpisodeReplay(c *gin.Context) {
 	episodeID := c.Param("episode_id")
-	ctx := c.Request.Context()
 	percent := 100
 	fmt.Sscanf(c.DefaultQuery("percent", "100"), "%d", &percent)
-	if percent < 0 {
-		percent = 0
-	}
-	if percent > 100 {
-		percent = 100
-	}
-	ep, err := s.episodes.Get(ctx, episodeID)
+	view, err := s.workspaceSvc.GetEpisodeReplay(c.Request.Context(), episodeID, percent)
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
+		if errors.Is(err, appWorkspace.ErrEpisodeNotFound) {
 			writeError(c, http.StatusNotFound, "not_found", "episode not found", nil)
 			return
 		}
 		writeError(c, http.StatusInternalServerError, "replay_error", "failed to get episode", err.Error())
 		return
 	}
-	trace, _ := s.episodes.ListProcessTraceByEpisode(ctx, episodeID)
-	view := buildReplaySliceView(ep, trace, percent)
 	c.JSON(http.StatusOK, view)
 }
 
@@ -1703,28 +1479,15 @@ func (s *Server) handleGetEpisodeReplay(c *gin.Context) {
 // @Router /api/v1/executions/{id}/episodes/{episode_id}/dossier [get]
 func (s *Server) handleGetEpisodeDossier(c *gin.Context) {
 	episodeID := c.Param("episode_id")
-	ctx := c.Request.Context()
-	ep, err := s.episodes.Get(ctx, episodeID)
+	dossier, err := s.workspaceSvc.GetEpisodeDossier(c.Request.Context(), episodeID)
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
+		if errors.Is(err, appWorkspace.ErrEpisodeNotFound) {
 			writeError(c, http.StatusNotFound, "not_found", "episode not found", nil)
 			return
 		}
 		writeError(c, http.StatusInternalServerError, "dossier_error", "failed to get episode", err.Error())
 		return
 	}
-	facts, _ := s.episodes.ListRuntimeFactsByEpisode(ctx, episodeID)
-	// CR-011: use the same Experience-backed helper as the /memory-recalls
-	// endpoint so the dossier and the inset strip always show identical data.
-	// Memory recall failure is treated as a soft error: the dossier is still
-	// returned with an empty memory_recalls list so the rest of the workspace
-	// remains functional; the error is logged for operator visibility.
-	recalls, recallErr := buildMemoryRecallsForEpisode(ctx, ep, s.memory)
-	if recallErr != nil {
-		logger.L().Warnw("memory recall search failed; dossier served with empty recalls",
-			"episode_id", episodeID, "error", recallErr)
-	}
-	dossier := buildEpisodeDossier(ep, facts, recalls)
 	c.JSON(http.StatusOK, dossier)
 }
 
@@ -1746,25 +1509,16 @@ func (s *Server) handleGetEpisodeDossier(c *gin.Context) {
 // @Router /api/v1/executions/{id}/episodes/{episode_id}/memory-recalls [get]
 func (s *Server) handleGetEpisodeMemoryRecalls(c *gin.Context) {
 	episodeID := c.Param("episode_id")
-	ctx := c.Request.Context()
-	ep, err := s.episodes.Get(ctx, episodeID)
+	list, err := s.workspaceSvc.GetEpisodeMemoryRecalls(c.Request.Context(), episodeID)
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
+		if errors.Is(err, appWorkspace.ErrEpisodeNotFound) {
 			writeError(c, http.StatusNotFound, "not_found", "episode not found", nil)
 			return
 		}
-		writeError(c, http.StatusInternalServerError, "memory_recall_error", "failed to get episode", err.Error())
-		return
-	}
-	recalls, err := buildMemoryRecallsForEpisode(ctx, ep, s.memory)
-	if err != nil {
 		writeError(c, http.StatusInternalServerError, "memory_recall_error", "failed to search memory recalls", err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, models.MemoryRecallListView{
-		Items:              recalls,
-		ImplementationNote: "keyword_overlap",
-	})
+	c.JSON(http.StatusOK, list)
 }
 
 // buildMemoryRecallsForEpisode searches the Experience store for historical
@@ -1886,26 +1640,19 @@ func buildMemoryRecallsForEpisode(ctx context.Context, ep *models.Episode, expSt
 func (s *Server) handleGetComparisonTarget(c *gin.Context) {
 	execID := c.Param("id")
 	historicalID := c.Param("historical_id")
-	ctx := c.Request.Context()
-	current, err := s.execs.Get(ctx, execID)
+	summary, err := s.workspaceSvc.GetComparisonTarget(c.Request.Context(), execID, historicalID)
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
+		if errors.Is(err, appWorkspace.ErrExecutionNotFound) {
 			writeError(c, http.StatusNotFound, "not_found", "execution not found", nil)
 			return
 		}
-		writeError(c, http.StatusInternalServerError, "comparison_error", "failed to get current execution", err.Error())
-		return
-	}
-	historical, err := s.execs.Get(ctx, historicalID)
-	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
+		if errors.Is(err, appWorkspace.ErrHistoricalNotFound) {
 			writeError(c, http.StatusNotFound, "not_found", "historical execution not found", nil)
 			return
 		}
-		writeError(c, http.StatusInternalServerError, "comparison_error", "failed to get historical execution", err.Error())
+		writeError(c, http.StatusInternalServerError, "comparison_error", "failed to build comparison", err.Error())
 		return
 	}
-	summary := buildComparisonSummary(current, historical)
 	c.JSON(http.StatusOK, summary)
 }
 
@@ -2016,10 +1763,10 @@ func buildEpisodeDossier(ep *models.Episode, facts []models.RuntimeFactView, rec
 	display := models.DossierDisplayView{}
 	if ep.Verdict != nil {
 		display.Verdict = string(ep.Verdict.Result)
-		display.VerdictLabel = verdictLabelFromResult(ep.Verdict.Result)
+		display.VerdictLabel = domainEpisode.VerdictLabelFromResult(ep.Verdict.Result)
 		display.Summary = ep.Verdict.Conclusion
 	}
-	applyHumanReviewToDossierDisplay(ep, &display)
+	domainEpisode.ApplyHumanReviewDisplay(ep, &display)
 
 	// Derive a common focus_key for cross-column linkage when the episode has a
 	// single unambiguous handle (or all handles share the same type:value).
@@ -2084,34 +1831,9 @@ func buildEpisodeDossier(ep *models.Episode, facts []models.RuntimeFactView, rec
 	}
 }
 
-// applyHumanReviewToDossierDisplay mirrors the human-review display projection
-// used by episode summaries so the drawer and the summary list present the same
-// post-review semantics.
-func applyHumanReviewToDossierDisplay(ep *models.Episode, display *models.DossierDisplayView) {
-	if ep == nil || display == nil {
-		return
-	}
-	bannerSet := false
-	for _, hi := range ep.HumanInterventions {
-		switch hi.Action {
-		case models.HumanActionStateOverride, models.HumanActionHypothesisCorrected:
-			if !bannerSet {
-				msg := fmt.Sprintf("Human override: %s", hi.Detail)
-				display.Banner = &msg
-				bannerSet = true
-			}
-			display.VerdictLabel = "Overridden (Human)"
-		case models.HumanActionResumed:
-			display.VerdictLabel = "Approved"
-		case models.HumanActionAborted:
-			display.VerdictLabel = "Aborted"
-		}
-	}
-}
-
 // buildComparisonSummary compares two executions and returns a summary view.
-func buildComparisonSummary(current, historical *models.Execution) models.ComparisonSummaryView {
-	summary := models.ComparisonSummaryView{
+func buildComparisonSummary(current, historical *models.Execution) appWorkspace.ComparisonSummaryView {
+	summary := appWorkspace.ComparisonSummaryView{
 		ExecutionID:     current.ID,
 		Title:           fmt.Sprintf("%s vs %s", current.ID[:8], historical.ID[:8]),
 		ComparedAgainst: historical.ID,
@@ -2138,21 +1860,6 @@ func buildComparisonSummary(current, historical *models.Execution) models.Compar
 		}
 	}
 	return summary
-}
-
-// verdictLabelFromResult maps an EpisodeResult to a human-readable display label.
-// This is a thin wrapper that avoids importing the store package into API handlers.
-func verdictLabelFromResult(r models.EpisodeResult) string {
-	switch r {
-	case models.EpisodeResultPass:
-		return "Pass"
-	case models.EpisodeResultFail:
-		return "Fail"
-	case models.EpisodeResultInconclusive:
-		return "Inconclusive"
-	default:
-		return strings.Title(string(r))
-	}
 }
 
 // execToSummaryView projects a raw Execution into an ExecutionSummaryView.

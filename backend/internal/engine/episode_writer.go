@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"time"
 
+	domainEpisode "github.com/Trin9/SynapseFlow/backend/internal/domain/episode"
 	"github.com/Trin9/SynapseFlow/backend/internal/store"
 	"github.com/Trin9/SynapseFlow/backend/pkg/models"
 	"github.com/google/uuid"
@@ -421,7 +422,7 @@ func (w *EpisodeWriter) UpdateDisplaySummary(
 func (w *EpisodeWriter) WriteReviewState(
 	ctx context.Context,
 	execID string,
-	req models.ReviewActionRequest,
+	req domainEpisode.ReviewActionInput,
 ) error {
 	eps, err := w.store.ListByExecution(ctx, execID)
 	if err != nil {
@@ -453,7 +454,7 @@ func (w *EpisodeWriter) WriteReviewState(
 	}
 
 	now := time.Now().UTC()
-	action := reviewStatusToAction(req.Status)
+	action := domainEpisode.ReviewStatusToAction(req.Status)
 	intervention := models.HumanIntervention{
 		NodeID:    "",
 		Actor:     req.Actor,
@@ -465,19 +466,14 @@ func (w *EpisodeWriter) WriteReviewState(
 
 	// CR-013: update Episode.Status and ConcludedAt to reflect the review decision
 	// so that the display layer can show the correct state without re-deriving it.
-	switch req.Status {
-	case "approved":
-		// Only promote to converged when the episode was waiting for review.
-		if target.Status == models.EpisodeStatusEscalated {
-			target.Status = models.EpisodeStatusConverged
-			target.ConcludedAt = &now
-		}
-	case "aborted":
-		target.Status = models.EpisodeStatusFailed
+	mutation := domainEpisode.ReviewMutationFromStatus(req.Status, target.Status)
+	if mutation.NewStatus != "" {
+		target.Status = mutation.NewStatus
+	}
+	if mutation.SetConcluded {
 		target.ConcludedAt = &now
-	case "overridden":
-		target.Status = models.EpisodeStatusConverged
-		target.ConcludedAt = &now
+	}
+	if mutation.ApplyConclusion {
 		// Surface the reviewer note as the verdict conclusion when none exists yet.
 		if req.Note != "" && target.Verdict != nil && target.Verdict.Conclusion == "" {
 			target.Verdict.Conclusion = req.Note
@@ -527,19 +523,4 @@ func (w *EpisodeWriter) AppendReplayTimelineRange(
 		return nil
 	}
 	return fmt.Errorf("episode_writer.AppendReplayTimelineRange: fact %s not found in episode %s", factID, episodeID)
-}
-
-// reviewStatusToAction converts a ReviewActionRequest.Status string to the
-// corresponding HumanInterventionAction.
-func reviewStatusToAction(status string) models.HumanInterventionAction {
-	switch status {
-	case "approved":
-		return models.HumanActionResumed
-	case "aborted":
-		return models.HumanActionAborted
-	case "overridden":
-		return models.HumanActionStateOverride
-	default:
-		return models.HumanActionResumed
-	}
 }

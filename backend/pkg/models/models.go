@@ -737,17 +737,6 @@ type ReviewStateView struct {
 	ResumeCursor string     `json:"resume_cursor,omitempty"`
 }
 
-// ReviewActionRequest is the body accepted by
-// POST /api/v1/executions/:execution_id/review-actions.
-// If EpisodeID is non-empty the action targets that specific episode; otherwise
-// the most recently updated episode for the execution is used.
-type ReviewActionRequest struct {
-	EpisodeID string `json:"episode_id,omitempty"`
-	Status    string `json:"status"` // "approved" | "aborted" | "overridden"
-	Actor     string `json:"actor,omitempty"`
-	Note      string `json:"note,omitempty"`
-}
-
 // MemoryRecallView is a single memory recall item.
 // Note: current implementation uses keyword overlap scoring, not semantic vector recall.
 // confidence reflects keyword overlap degree, not semantic similarity.
@@ -767,16 +756,4 @@ type MemoryRecallView struct {
 type MemoryRecallListView struct {
 	Items              []MemoryRecallView `json:"items"`
 	ImplementationNote string             `json:"implementation_note"` // "keyword_overlap"
-}
-
-// ComparisonSummaryView is returned by
-// GET /api/v1/executions/:execution_id/comparison-targets/:historical_execution_id.
-type ComparisonSummaryView struct {
-	ExecutionID     string   `json:"execution_id"`
-	Title           string   `json:"title"`
-	Summary         string   `json:"summary"`
-	Outcome         string   `json:"outcome,omitempty"`
-	ComparedAgainst string   `json:"compared_against,omitempty"`
-	Highlights      []string `json:"highlights,omitempty"`
-	Caution         string   `json:"caution,omitempty"`
 }

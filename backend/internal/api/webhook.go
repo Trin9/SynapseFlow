@@ -64,6 +64,10 @@ func (s *Server) handleWebhookAlert(c *gin.Context) {
 	})
 
 	exec := s.startExecution(dag, state, "webhook")
+	if exec == nil {
+		writeError(c, http.StatusInternalServerError, "execution_unavailable", "failed to start execution", nil)
+		return
+	}
 	c.JSON(http.StatusAccepted, gin.H{
 		"execution_id": exec.ID,
 		"status":       exec.Status,
