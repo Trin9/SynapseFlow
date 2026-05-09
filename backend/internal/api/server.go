@@ -15,6 +15,7 @@ import (
 	"github.com/Trin9/SynapseFlow/backend/internal/api/dto"
 	appDAG "github.com/Trin9/SynapseFlow/backend/internal/application/dag"
 	appExecution "github.com/Trin9/SynapseFlow/backend/internal/application/execution"
+	appOps "github.com/Trin9/SynapseFlow/backend/internal/application/ops"
 	appWorkspace "github.com/Trin9/SynapseFlow/backend/internal/application/workspace"
 	workspaceView "github.com/Trin9/SynapseFlow/backend/internal/application/workspace/view"
 	"github.com/Trin9/SynapseFlow/backend/internal/auth"
@@ -74,6 +75,7 @@ type Server struct {
 	episodeWriter *engine.EpisodeWriter
 	dagService    *appDAG.Service
 	execService   *appExecution.Service
+	opsService    *appOps.Service
 	workspaceSvc  *appWorkspace.Service
 }
 
@@ -350,6 +352,7 @@ func NewServer(opts ...ServerOption) *Server {
 		BuildExecutionNotification: buildExecutionNotification,
 	}
 	s.dagService = &appDAG.Service{DAGs: s.dags}
+	s.opsService = &appOps.Service{Audits: s.audits, Memory: s.memory}
 	s.workspaceSvc = &appWorkspace.Service{
 		Executions:              s.execs,
 		Episodes:                s.episodes,
@@ -927,18 +930,10 @@ func (s *Server) handleGetExecutionNodes(c *gin.Context) {
 // @Failure 500 {object} apiError
 // @Router /api/v1/experiences [get]
 func (s *Server) handleListExperiences(c *gin.Context) {
-	if s.memory == nil {
-		c.JSON(http.StatusOK, []models.Experience{})
-		return
-	}
-
-	experiences, err := s.memory.List(c.Request.Context())
+	experiences, err := s.opsService.ListExperiences(c.Request.Context())
 	if err != nil {
 		writeError(c, http.StatusInternalServerError, "memory_error", "failed to list experiences", err.Error())
 		return
-	}
-	if experiences == nil {
-		experiences = []models.Experience{}
 	}
 	c.JSON(http.StatusOK, experiences)
 }
@@ -1061,7 +1056,7 @@ func (s *Server) handleResumeExecution(c *gin.Context) {
 // @Failure 500 {object} apiError
 // @Router /api/v1/audit [get]
 func (s *Server) handleListAudit(c *gin.Context) {
-	entries, err := s.audits.List(c.Request.Context())
+	entries, err := s.opsService.ListAuditEntries(c.Request.Context())
 	if err != nil {
 		writeError(c, http.StatusInternalServerError, "audit_list_failed", "failed to list audit entries", err.Error())
 		return
