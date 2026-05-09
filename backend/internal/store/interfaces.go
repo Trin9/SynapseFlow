@@ -59,22 +59,6 @@ type EpisodeStore interface {
 	SaveArtifact(ctx context.Context, artifact *models.EpisodeArtifact) error
 	// ListArtifacts returns all artifacts for an Episode.
 	ListArtifacts(ctx context.Context, episodeID string) ([]*models.EpisodeArtifact, error)
-
-	// --- View projection methods (M1.2) ---
-	// Data sources are projections of existing Episode fields; no new tables.
-
-	// ListEpisodeSummariesByExecution returns lightweight summary cards for all
-	// episodes of a given execution, ordered by created_at ascending.
-	ListEpisodeSummariesByExecution(ctx context.Context, execID string) ([]models.EpisodeSummaryView, error)
-	// ListProcessTraceByEpisode returns the process-trace timeline for a single
-	// episode, derived from its Evidence and HumanInterventions.
-	ListProcessTraceByEpisode(ctx context.Context, episodeID string) ([]models.ProcessTraceEntryView, error)
-	// ListRuntimeFactsByEpisode returns runtime facts (evidence projections) for
-	// a single episode.
-	ListRuntimeFactsByEpisode(ctx context.Context, episodeID string) ([]models.RuntimeFactView, error)
-	// GetReviewStateByExecution returns the aggregate human-review state for an
-	// execution, derived from HumanInterventions across its episodes.
-	GetReviewStateByExecution(ctx context.Context, execID string) (*models.ReviewStateView, error)
 }
 
 type SearchQuery struct {

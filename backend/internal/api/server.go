@@ -24,6 +24,7 @@ import (
 	"github.com/Trin9/SynapseFlow/backend/internal/memory"
 	"github.com/Trin9/SynapseFlow/backend/internal/metrics"
 	"github.com/Trin9/SynapseFlow/backend/internal/notify"
+	projectionWorkspace "github.com/Trin9/SynapseFlow/backend/internal/projection/workspace"
 	"github.com/Trin9/SynapseFlow/backend/internal/store"
 	"github.com/Trin9/SynapseFlow/backend/pkg/logger"
 	"github.com/Trin9/SynapseFlow/backend/pkg/models"
@@ -1260,10 +1261,14 @@ func (s *Server) handleListEpisodes(c *gin.Context) {
 	execID := c.Param("id")
 	ctx := c.Request.Context()
 	if c.Query("view") == "summary" {
-		summaries, err := s.episodes.ListEpisodeSummariesByExecution(ctx, execID)
+		episodes, err := s.episodes.ListByExecution(ctx, execID)
 		if err != nil {
 			writeError(c, http.StatusInternalServerError, "episode_list_error", "failed to list episode summaries", err.Error())
 			return
+		}
+		summaries := make([]models.EpisodeSummaryView, len(episodes))
+		for i, ep := range episodes {
+			summaries[i] = projectionWorkspace.EpisodeToSummary(ep)
 		}
 		if summaries == nil {
 			summaries = []models.EpisodeSummaryView{}

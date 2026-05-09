@@ -13,6 +13,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/Trin9/SynapseFlow/backend/internal/audit"
+	projectionWorkspace "github.com/Trin9/SynapseFlow/backend/internal/projection/workspace"
 	"github.com/Trin9/SynapseFlow/backend/pkg/models"
 )
 
@@ -359,7 +360,7 @@ func (s *PostgresExecutionStore) GetExecutionSummary(ctx context.Context, execID
 	if err != nil {
 		return nil, err
 	}
-	return projectExecutionToSummary(exec), nil
+	return projectionWorkspace.ExecutionToSummary(exec), nil
 }
 
 type PostgresAuditStore struct{ db *sql.DB }
@@ -901,7 +902,7 @@ func (s *PostgresEpisodeStore) ListEpisodeSummariesByExecution(ctx context.Conte
 	}
 	out := make([]models.EpisodeSummaryView, len(eps))
 	for i, ep := range eps {
-		out[i] = projectEpisodeToSummary(ep)
+		out[i] = projectionWorkspace.EpisodeToSummary(ep)
 	}
 	return out, nil
 }
@@ -911,7 +912,7 @@ func (s *PostgresEpisodeStore) ListProcessTraceByEpisode(ctx context.Context, ep
 	if err != nil {
 		return nil, err
 	}
-	return projectEpisodeToProcessTrace(ep), nil
+	return projectionWorkspace.EpisodeToProcessTrace(ep), nil
 }
 
 func (s *PostgresEpisodeStore) ListRuntimeFactsByEpisode(ctx context.Context, episodeID string) ([]models.RuntimeFactView, error) {
@@ -919,7 +920,7 @@ func (s *PostgresEpisodeStore) ListRuntimeFactsByEpisode(ctx context.Context, ep
 	if err != nil {
 		return nil, err
 	}
-	return projectEpisodeToRuntimeFacts(ep), nil
+	return projectionWorkspace.EpisodeToRuntimeFacts(ep), nil
 }
 
 func (s *PostgresEpisodeStore) GetReviewStateByExecution(ctx context.Context, execID string) (*models.ReviewStateView, error) {
@@ -927,5 +928,5 @@ func (s *PostgresEpisodeStore) GetReviewStateByExecution(ctx context.Context, ex
 	if err != nil {
 		return nil, err
 	}
-	return projectEpisodesToReviewState(eps), nil
+	return projectionWorkspace.EpisodesToReviewState(eps), nil
 }
