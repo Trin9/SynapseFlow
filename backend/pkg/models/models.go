@@ -71,6 +71,16 @@ const (
 	StatusSuspended ExecutionStatus = "suspended" // waiting for human approval
 )
 
+// IsValid reports whether execution status is one of known enum values.
+func (s ExecutionStatus) IsValid() bool {
+	switch s {
+	case StatusPending, StatusRunning, StatusCompleted, StatusFailed, StatusTimeout, StatusSuspended:
+		return true
+	default:
+		return false
+	}
+}
+
 // Execution represents a single run of a DAG workflow.
 type Execution struct {
 	ID        string          `json:"id"`

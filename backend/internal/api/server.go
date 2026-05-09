@@ -868,7 +868,12 @@ func (s *Server) handleListExecutions(c *gin.Context) {
 	}
 	// Optional filter: ?status=<status>
 	if statusStr := c.Query("status"); statusStr != "" {
-		input.Status = models.ExecutionStatus(statusStr)
+		status := models.ExecutionStatus(statusStr)
+		if !status.IsValid() {
+			writeError(c, http.StatusBadRequest, "invalid_request", "invalid execution status", statusStr)
+			return
+		}
+		input.Status = status
 	}
 	list, err := s.execService.ListExecutions(ctx, input)
 	if err != nil {
@@ -1007,11 +1012,20 @@ func (s *Server) handleResumeExecution(c *gin.Context) {
 
 	var resumeBody resumeExecutionRequest
 	_ = c.ShouldBindJSON(&resumeBody)
+	action := models.HumanInterventionAction(resumeBody.Action)
+	if action != "" {
+		switch action {
+		case models.HumanActionResumed, models.HumanActionAborted, models.HumanActionStateOverride:
+		default:
+			writeError(c, http.StatusBadRequest, "invalid_request", "invalid resume action", resumeBody.Action)
+			return
+		}
+	}
 
 	exec, err := s.execService.ResumeExecution(c.Request.Context(), appExecution.ResumeInput{
 		ExecutionID: id,
 		Actor:       resumeBody.Actor,
-		Action:      models.HumanInterventionAction(resumeBody.Action),
+		Action:      action,
 		Detail:      resumeBody.Detail,
 	})
 	if err != nil {
