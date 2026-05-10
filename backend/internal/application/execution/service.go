@@ -128,25 +128,30 @@ func (s *Service) StartExecution(dag *models.DAGConfig, initialState *models.Glo
 	}
 
 	if epType, ok := dag.Metadata["episode_type"]; ok && epType != "" && s.Episodes != nil {
-		ep := &models.Episode{
-			ID:            generateID(),
-			ExecID:        execID,
-			EpisodeType:   models.EpisodeType(epType),
-			Status:        models.EpisodeStatusPending,
-			Trigger:       &models.EpisodeTrigger{Type: models.EpisodeTriggerManual},
-			LoopGuard:     models.EpisodeLoopGuard{MaxIterations: 10},
-			SchemaVersion: 1,
-			CreatedAt:     time.Now().UTC(),
-			UpdatedAt:     time.Now().UTC(),
-		}
-		if initialState == nil {
-			initialState = models.NewGlobalState()
-		}
-		if err := s.Episodes.Create(context.Background(), ep); err != nil {
-			logger.L().Warnw("failed to auto-create episode", "exec_id", execID, "error", err)
+		domainType := domainEpisode.EpisodeType(epType)
+		if !domainType.IsValid() {
+			logger.L().Warnw("invalid episode_type metadata; skipping auto-create episode", "exec_id", execID, "episode_type", epType)
 		} else {
-			initialState.Set("__episode_id__", ep.ID)
-			logger.L().Infow("auto-created episode", "exec_id", execID, "episode_id", ep.ID, "type", epType)
+			ep := &models.Episode{
+				ID:            generateID(),
+				ExecID:        execID,
+				EpisodeType:   domainType.ToModel(),
+				Status:        models.EpisodeStatusPending,
+				Trigger:       &models.EpisodeTrigger{Type: models.EpisodeTriggerManual},
+				LoopGuard:     models.EpisodeLoopGuard{MaxIterations: 10},
+				SchemaVersion: 1,
+				CreatedAt:     time.Now().UTC(),
+				UpdatedAt:     time.Now().UTC(),
+			}
+			if initialState == nil {
+				initialState = models.NewGlobalState()
+			}
+			if err := s.Episodes.Create(context.Background(), ep); err != nil {
+				logger.L().Warnw("failed to auto-create episode", "exec_id", execID, "error", err)
+			} else {
+				initialState.Set("__episode_id__", ep.ID)
+				logger.L().Infow("auto-created episode", "exec_id", execID, "episode_id", ep.ID, "type", epType)
+			}
 		}
 	}
 

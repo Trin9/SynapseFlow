@@ -45,6 +45,8 @@ Status: **Partially started**
 Completed seeds:
 
 - `internal/domain/episode/*` and `internal/domain/execution/*` transitions/typing foundations.
+- First migration slice added: `internal/domain/episode/enums.go` with `EpisodeType` domain enum and model mapping.
+- Execution auto-create path now validates `metadata.episode_type` via domain enum before creating Episode records.
 
 Remaining:
 
