@@ -9,6 +9,7 @@ import (
 	"time"
 
 	appDAG "github.com/Trin9/SynapseFlow/backend/internal/application/dag"
+	appAudit "github.com/Trin9/SynapseFlow/backend/internal/application/audit"
 	appExecution "github.com/Trin9/SynapseFlow/backend/internal/application/execution"
 	appOps "github.com/Trin9/SynapseFlow/backend/internal/application/ops"
 	appSystem "github.com/Trin9/SynapseFlow/backend/internal/application/system"
@@ -67,6 +68,7 @@ type Server struct {
 	// Injected into executors at startup; also used by API handlers (e.g. resume).
 	episodeWriter *engine.EpisodeWriter
 	dagService    *appDAG.Service
+	auditSvc      *appAudit.Service
 	execService   *appExecution.Service
 	opsService    *appOps.Service
 	systemSvc     *appSystem.Service

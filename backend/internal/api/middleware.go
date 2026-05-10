@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Trin9/SynapseFlow/backend/internal/audit"
+	appAudit "github.com/Trin9/SynapseFlow/backend/internal/application/audit"
 	"github.com/Trin9/SynapseFlow/backend/internal/auth"
 	"github.com/gin-gonic/gin"
 )
@@ -119,7 +119,7 @@ func (s *Server) auditMiddleware(action, resourceType string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Next() // execute handler first
 
-		if s.audits == nil {
+		if s.auditSvc == nil {
 			return
 		}
 		id := identityFromCtx(c)
@@ -141,7 +141,7 @@ func (s *Server) auditMiddleware(action, resourceType string) gin.HandlerFunc {
 		details := fmt.Sprintf("ip=%s method=%s path=%s",
 			c.ClientIP(), c.Request.Method, c.Request.URL.Path)
 
-		_ = s.audits.Record(context.Background(), audit.Entry{
+		_ = s.auditSvc.Record(context.Background(), appAudit.RecordInput{
 			Actor:      actor,
 			Role:       role,
 			Action:     action,

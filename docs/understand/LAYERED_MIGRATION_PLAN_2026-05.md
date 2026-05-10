@@ -21,7 +21,7 @@ Remaining:
 
 ### 2) Medium risk, medium return: system-level exception sinking
 
-Status: **In progress**
+Status: **Completed**
 
 Completed in current stage:
 
@@ -29,9 +29,14 @@ Completed in current stage:
 - Moved health dependency probing into `application/system.Service`.
 - API `handleHealth` now consumes `system.Service` probe result.
 
+Completed in this batch:
+
+- Introduced `internal/application/audit/service.go`.
+- API `auditMiddleware` now delegates write orchestration to `application/audit.Service`.
+
 Remaining:
 
-- Introduce audit application service and route middleware write through it.
+- Keep monitoring for any direct transport-side write orchestration reintroduction.
 
 ### 3) Medium-high risk, high return: move domain-heavy types out of `pkg/models`
 
@@ -74,6 +79,6 @@ Known pre-existing repo-wide issue:
 
 ## Next Recommended Order
 
-1. Introduce `application/audit.Service` and sink middleware write path.
-2. Continue domain-type extraction from `pkg/models` in small reversible slices.
-3. Continue enum hardening at transport boundary.
+1. Continue domain-type extraction from `pkg/models` in small reversible slices.
+2. Continue enum hardening at transport boundary.
+3. Add focused tests around audit application service behavior (optional hardening).

@@ -33,13 +33,14 @@ This audit verifies backend layering boundaries after incremental refactor:
 - Workspace use-cases routed through `application/workspace.Service`.
 - Ops reads routed through `application/ops.Service`.
 - System health probing now routed through `application/system.Service`.
+- Audit write orchestration now routed through `application/audit.Service`.
 
 ## Allowed Exceptions (By Design)
 
 These are currently allowed while keeping business orchestration clean:
 
 - `NewServer` wiring and infra bootstrap (`db/store/memory` construction + injection)
-- `auditMiddleware` audit write side effect
+- `auditMiddleware` remains transport trigger point but delegates write to `application/audit.Service`
 
 ## Dependency Rule Status
 
