@@ -34,12 +34,9 @@ The name "Synapse" originates from biology, symbolizing the platform's role as a
 
 | Document | Description |
 |----------|------------|
-| [Product Design](./docs/PRODUCT_DESIGN.md) | Product philosophy, architecture, NFRs, competitive analysis |
-| [Implementation Plan](./docs/IMPLEMENTATION_PLAN.md) | Phased milestone plan with time estimates and acceptance criteria |
-| [Project Structure](./docs/PROJECT_STRUCTURE.md) | Directory topology and module architecture |
-| [Layered Boundary Audit (2026-05)](./docs/understand/LAYERED_ARCHITECTURE_BOUNDARY_AUDIT_2026-05.md) | As-built layering boundary closure report |
+| [Layered Boundary Audit (2026-05)](./docs/understand/LAYERED_ARCHITECTURE_BOUNDARY_AUDIT_2026-05.md) | As-built layering boundary closure report and current API split status |
+| [Layered Migration Plan (Detailed)](./docs/understand/LAYERED_MIGRATION_PLAN_2026-05.md) | Detailed migration roadmap, completion status, risks, and next steps |
 | [Agent Design Principles](./AGENTS.md) | Hard/soft node collaboration, state machine flow, shadow memory |
-| [Design Rationale](./docs/talk&thoughts/DESIGN_RATIONALE.md) | Architectural decision records (Q&A format) |
 
 > *For Chinese documentation, see the `*_CN.md` files (e.g., [README_CN.md](./README_CN.md)).*
 

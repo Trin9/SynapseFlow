@@ -14,9 +14,19 @@ This audit verifies the current backend layering boundary after the incremental 
 - **Business pathways: closed** (`api` handlers delegate to application services).
 - **No remaining direct `api -> store` coupling on migrated business use-cases.**
 - **A small set of infra-touching locations remains by design** (initialization/probe/middleware side effect).
+- **API transport split has advanced to responsibility-based files** and no longer concentrates all handlers in one `server.go`.
 
 ## Closed Boundaries (Completed)
 
+- API handler decomposition in `internal/api`:
+  - `server_dag.go` (DAG CRUD + run)
+  - `server_execution.go` (inline run/resume/get/list/nodes)
+  - `server_workspace.go` (episodes/workspace views)
+  - `server_system_auth.go` (health/live/metrics/token)
+  - `webhook.go` (alert webhook)
+  - `server_router.go` (route registration)
+  - `server_bootstrap.go` (server wiring/bootstrap)
+  - `server_helpers.go` (shared helper functions)
 - DAG use-cases routed through `application/dag.Service`
   - create/list/get/update/delete
   - DAG resolution for run and webhook matching
@@ -37,6 +47,12 @@ These are not business orchestration paths and are allowed to touch infrastructu
 - `NewServer` wiring and infra bootstrap (`db/store/memory` construction + injection)
 - `handleHealth` dependency probes (`DB ping`, `MCP ListTools`)
 - `auditMiddleware` audit write side effect
+
+## Remaining Clarity Work (Non-Blocking)
+
+- Keep shrinking `server.go` toward a thin shell (`Server` struct + cross-cutting runtime helpers only).
+- Decide whether `handleListTools` should stay in `server.go` or move to a dedicated `server_tools.go`.
+- If stricter layering is required, move middleware write side-effects and health probing into `application/*` services (see optional hardening below).
 
 ## Dependency Rule Status
 
