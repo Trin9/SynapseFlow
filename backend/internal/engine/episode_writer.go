@@ -269,7 +269,7 @@ func computeMemoryExtraction(v *models.EpisodeVerdict) *models.EpisodeMemoryExtr
 	if v == nil {
 		return nil
 	}
-	if v.Confidence == models.EpisodeConfidenceHigh && v.Result != models.EpisodeResultInconclusive {
+	if v.Confidence == domainEpisode.EpisodeConfidenceHigh.ToModel() && v.Result != domainEpisode.EpisodeResultInconclusive.ToModel() {
 		return &models.EpisodeMemoryExtraction{
 			Triggered: true,
 			TriggerBy: "auto_high_confidence",

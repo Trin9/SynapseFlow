@@ -86,11 +86,11 @@ func HumanActionLabel(a models.HumanInterventionAction) string {
 // VerdictLabelFromResult maps EpisodeResult to display label.
 func VerdictLabelFromResult(r models.EpisodeResult) string {
 	switch r {
-	case models.EpisodeResultPass:
+	case EpisodeResultPass.ToModel():
 		return "Pass"
-	case models.EpisodeResultFail:
+	case EpisodeResultFail.ToModel():
 		return "Fail"
-	case models.EpisodeResultInconclusive:
+	case EpisodeResultInconclusive.ToModel():
 		return "Inconclusive"
 	default:
 		return strings.Title(string(r))

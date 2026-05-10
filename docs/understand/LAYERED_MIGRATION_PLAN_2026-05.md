@@ -54,6 +54,7 @@ Completed seeds:
 - Concurrency hardening: `EpisodeWriter` now serializes writes per `episode_id` to avoid lost updates under concurrent node writes (evidence append/status transition race).
 - Test-suite alignment: internal engine/store/api tests now use domain `EpisodeType`/`EpisodeStatus` mappings instead of direct model enum constants.
 - Review-state coverage hardening: added writer tests for explicit episode targeting and fallback-to-latest episode behavior.
+- Domain verdict semantics slice: added domain `EpisodeResult` and `EpisodeConfidence` enums with model mapping; runtime verdict parse/extraction paths now use domain mappings.
 
 Remaining:
 
@@ -107,6 +108,11 @@ Latest batch verification (test/boundary alignment follow-up):
 - Automated: `go test ./internal/engine ./internal/store ./internal/api`
 - Focused: `go test ./internal/engine -run TestWriteReviewState -count=10`
 - Scope note: this batch is test and boundary-alignment only (no runtime behavior change expected).
+
+Latest batch verification (verdict semantics follow-up):
+
+- Automated: `go test ./internal/domain/episode ./internal/engine ./internal/api`
+- Stability: `go test ./internal/api -run TestEpisodeLifecycle_AutoCreateAndConverge -count=20`
 
 ## Next Recommended Order
 

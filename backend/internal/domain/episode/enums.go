@@ -46,3 +46,47 @@ func (s EpisodeStatus) IsValid() bool {
 func (s EpisodeStatus) ToModel() models.EpisodeStatus {
 	return models.EpisodeStatus(s)
 }
+
+// EpisodeResult is the domain enum for episode verdict result.
+type EpisodeResult string
+
+const (
+	EpisodeResultPass         EpisodeResult = "pass"
+	EpisodeResultFail         EpisodeResult = "fail"
+	EpisodeResultInconclusive EpisodeResult = "inconclusive"
+)
+
+func (r EpisodeResult) IsValid() bool {
+	switch r {
+	case EpisodeResultPass, EpisodeResultFail, EpisodeResultInconclusive:
+		return true
+	default:
+		return false
+	}
+}
+
+func (r EpisodeResult) ToModel() models.EpisodeResult {
+	return models.EpisodeResult(r)
+}
+
+// EpisodeConfidence is the domain enum for verdict confidence.
+type EpisodeConfidence string
+
+const (
+	EpisodeConfidenceHigh   EpisodeConfidence = "high"
+	EpisodeConfidenceMedium EpisodeConfidence = "medium"
+	EpisodeConfidenceLow    EpisodeConfidence = "low"
+)
+
+func (c EpisodeConfidence) IsValid() bool {
+	switch c {
+	case EpisodeConfidenceHigh, EpisodeConfidenceMedium, EpisodeConfidenceLow:
+		return true
+	default:
+		return false
+	}
+}
+
+func (c EpisodeConfidence) ToModel() models.EpisodeConfidence {
+	return models.EpisodeConfidence(c)
+}

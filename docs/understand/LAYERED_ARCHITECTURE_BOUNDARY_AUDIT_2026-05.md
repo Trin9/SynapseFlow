@@ -63,6 +63,7 @@ These are currently allowed while keeping business orchestration clean:
 - Runtime-layer Episode enum usage has been aligned to domain mapping in migrated paths (`engine`, `application`, `projection`, `domain transitions`).
 - Test-layer Episode enum usage is now also aligned to domain mapping in `internal/engine`, `internal/store`, and `internal/api` tests.
 - New writer consistency coverage added for review-state updates: explicit episode targeting and fallback latest-episode selection.
+- Domain verdict enum mapping (`EpisodeResult`/`EpisodeConfidence`) is now used in runtime verdict parse and memory-extraction decision paths.
 
 ## Remaining Gaps (Current)
 

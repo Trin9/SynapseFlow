@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	domainEpisode "github.com/Trin9/SynapseFlow/backend/internal/domain/episode"
 	"github.com/Trin9/SynapseFlow/backend/internal/llm"
 	"github.com/Trin9/SynapseFlow/backend/pkg/models"
 )
@@ -338,8 +339,8 @@ func buildVerdictFromLLMOutput(content string) models.EpisodeVerdict {
 	if err := json.Unmarshal([]byte(content), &parsed); err != nil {
 		return models.EpisodeVerdict{
 			Conclusion: content,
-			Result:     models.EpisodeResultInconclusive,
-			Confidence: models.EpisodeConfidenceLow,
+			Result:     domainEpisode.EpisodeResultInconclusive.ToModel(),
+			Confidence: domainEpisode.EpisodeConfidenceLow.ToModel(),
 		}
 	}
 
@@ -358,23 +359,23 @@ func buildVerdictFromLLMOutput(content string) models.EpisodeVerdict {
 	case string:
 		switch strings.ToLower(cv) {
 		case "high":
-			verdict.Confidence = models.EpisodeConfidenceHigh
+			verdict.Confidence = domainEpisode.EpisodeConfidenceHigh.ToModel()
 		case "medium":
-			verdict.Confidence = models.EpisodeConfidenceMedium
+			verdict.Confidence = domainEpisode.EpisodeConfidenceMedium.ToModel()
 		default:
-			verdict.Confidence = models.EpisodeConfidenceLow
+			verdict.Confidence = domainEpisode.EpisodeConfidenceLow.ToModel()
 		}
 	case float64:
 		switch {
 		case cv >= 80:
-			verdict.Confidence = models.EpisodeConfidenceHigh
+			verdict.Confidence = domainEpisode.EpisodeConfidenceHigh.ToModel()
 		case cv >= 50:
-			verdict.Confidence = models.EpisodeConfidenceMedium
+			verdict.Confidence = domainEpisode.EpisodeConfidenceMedium.ToModel()
 		default:
-			verdict.Confidence = models.EpisodeConfidenceLow
+			verdict.Confidence = domainEpisode.EpisodeConfidenceLow.ToModel()
 		}
 	default:
-		verdict.Confidence = models.EpisodeConfidenceLow
+		verdict.Confidence = domainEpisode.EpisodeConfidenceLow.ToModel()
 	}
 
 	// Result: derived from business_success flag when present.
@@ -382,13 +383,13 @@ func buildVerdictFromLLMOutput(content string) models.EpisodeVerdict {
 		switch v := bs.(type) {
 		case bool:
 			if v {
-				verdict.Result = models.EpisodeResultPass
+				verdict.Result = domainEpisode.EpisodeResultPass.ToModel()
 			} else {
-				verdict.Result = models.EpisodeResultFail
+				verdict.Result = domainEpisode.EpisodeResultFail.ToModel()
 			}
 		}
 	} else {
-		verdict.Result = models.EpisodeResultInconclusive
+		verdict.Result = domainEpisode.EpisodeResultInconclusive.ToModel()
 	}
 
 	// CausalChain: root_cause as first entry when it differs from conclusion.
