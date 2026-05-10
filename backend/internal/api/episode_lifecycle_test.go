@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	domainEpisode "github.com/Trin9/SynapseFlow/backend/internal/domain/episode"
 	"github.com/Trin9/SynapseFlow/backend/pkg/models"
 )
 
@@ -266,8 +267,8 @@ func TestBuildEpisodeDossier_AppliesHumanReviewDisplayProjection(t *testing.T) {
 	ep := &models.Episode{
 		ID:          "ep-review-001",
 		ExecID:      "exec-review-001",
-		EpisodeType: models.EpisodeTypeActionVerification,
-		Status:      models.EpisodeStatusConverged,
+		EpisodeType: domainEpisode.EpisodeTypeActionVerification.ToModel(),
+		Status:      domainEpisode.EpisodeStatusConverged.ToModel(),
 		Verdict: &models.EpisodeVerdict{
 			Result:     models.EpisodeResultFail,
 			Confidence: models.EpisodeConfidenceLow,

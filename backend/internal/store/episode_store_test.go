@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	domainEpisode "github.com/Trin9/SynapseFlow/backend/internal/domain/episode"
 	"github.com/Trin9/SynapseFlow/backend/pkg/models"
 )
 
@@ -20,8 +21,8 @@ func baseEpisode(id, execID string) *models.Episode {
 	return &models.Episode{
 		ID:            id,
 		ExecID:        execID,
-		EpisodeType:   models.EpisodeTypeActionVerification,
-		Status:        models.EpisodeStatusPending,
+		EpisodeType:   domainEpisode.EpisodeTypeActionVerification.ToModel(),
+		Status:        domainEpisode.EpisodeStatusPending.ToModel(),
 		LoopGuard:     models.EpisodeLoopGuard{MaxIterations: 8},
 		SchemaVersion: 1,
 		CreatedAt:     time.Now().UTC(),
@@ -49,7 +50,7 @@ func TestMemoryEpisodeStore_CreateGet(t *testing.T) {
 	if got.ID != ep.ID {
 		t.Errorf("ID mismatch: got %q want %q", got.ID, ep.ID)
 	}
-	if got.Status != models.EpisodeStatusPending {
+	if got.Status != domainEpisode.EpisodeStatusPending.ToModel() {
 		t.Errorf("Status mismatch: got %q", got.Status)
 	}
 }
@@ -71,7 +72,7 @@ func TestMemoryEpisodeStore_Update(t *testing.T) {
 	_ = s.Create(ctx, ep)
 
 	// Transition to in_progress.
-	ep.Status = models.EpisodeStatusInProgress
+	ep.Status = domainEpisode.EpisodeStatusInProgress.ToModel()
 	ep.Evidence = append(ep.Evidence, models.EpisodeEvidence{
 		ID: "ev-01", Type: models.EvidenceTypeFact, NodeID: "n1",
 		NodeType: models.NodeTypeScript, Label: "check", Content: "ok",
@@ -84,7 +85,7 @@ func TestMemoryEpisodeStore_Update(t *testing.T) {
 	}
 
 	got, _ := s.Get(ctx, ep.ID)
-	if got.Status != models.EpisodeStatusInProgress {
+	if got.Status != domainEpisode.EpisodeStatusInProgress.ToModel() {
 		t.Errorf("expected in_progress, got %q", got.Status)
 	}
 	if len(got.Evidence) != 1 {
@@ -160,12 +161,12 @@ func TestMemoryEpisodeStore_IsolationAfterGet(t *testing.T) {
 
 	got, _ := s.Get(ctx, ep.ID)
 	// Mutate the returned copy.
-	got.Status = models.EpisodeStatusConverged
+	got.Status = domainEpisode.EpisodeStatusConverged.ToModel()
 	got.Evidence = append(got.Evidence, models.EpisodeEvidence{ID: "injected"})
 
 	// Re-fetch; mutations must not have propagated.
 	got2, _ := s.Get(ctx, ep.ID)
-	if got2.Status != models.EpisodeStatusPending {
+	if got2.Status != domainEpisode.EpisodeStatusPending.ToModel() {
 		t.Errorf("mutation leaked into store: status=%q", got2.Status)
 	}
 	if len(got2.Evidence) != 0 {
@@ -195,7 +196,7 @@ func TestMemoryEpisodeStore_VerdictRoundTrip(t *testing.T) {
 		DecidedBy:       "node-llm",
 		DecidedAt:       now,
 	}
-	ep.Status = models.EpisodeStatusConverged
+	ep.Status = domainEpisode.EpisodeStatusConverged.ToModel()
 	ep.ConcludedAt = &now
 	ep.UpdatedAt = now
 	_ = s.Update(ctx, ep)

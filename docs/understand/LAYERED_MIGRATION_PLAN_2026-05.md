@@ -52,6 +52,8 @@ Completed seeds:
 - Projection alignment: workspace projector replay-percentage status buckets now use domain `EpisodeStatus` mappings instead of direct model constants.
 - Projection follow-up: process-trace action-stage detection now uses domain `EpisodeType` mapping (`action_verification`) instead of direct model enum.
 - Concurrency hardening: `EpisodeWriter` now serializes writes per `episode_id` to avoid lost updates under concurrent node writes (evidence append/status transition race).
+- Test-suite alignment: internal engine/store/api tests now use domain `EpisodeType`/`EpisodeStatus` mappings instead of direct model enum constants.
+- Review-state coverage hardening: added writer tests for explicit episode targeting and fallback-to-latest episode behavior.
 
 Remaining:
 
@@ -99,6 +101,12 @@ Latest batch verification (EpisodeStatus migration follow-up):
 - Additional stability verification:
   - `go test ./internal/engine` includes concurrent append regression (`TestAppendFact_ConcurrentAppends_NoLostUpdates`).
   - `go test ./internal/api -run TestEpisodeLifecycle_AutoCreateAndConverge -count=30` passes to validate lifecycle stability under repeated runs.
+
+Latest batch verification (test/boundary alignment follow-up):
+
+- Automated: `go test ./internal/engine ./internal/store ./internal/api`
+- Focused: `go test ./internal/engine -run TestWriteReviewState -count=10`
+- Scope note: this batch is test and boundary-alignment only (no runtime behavior change expected).
 
 ## Next Recommended Order
 

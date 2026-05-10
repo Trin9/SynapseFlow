@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	domainEpisode "github.com/Trin9/SynapseFlow/backend/internal/domain/episode"
 	"github.com/Trin9/SynapseFlow/backend/internal/store"
 	"github.com/Trin9/SynapseFlow/backend/pkg/models"
 )
@@ -27,8 +28,8 @@ func newTestEpisode(t *testing.T) (*store.MemoryEpisodeStore, *EpisodeWriter, st
 	ep := &models.Episode{
 		ID:            "ep-test-001",
 		ExecID:        "exec-001",
-		EpisodeType:   models.EpisodeTypeActionVerification,
-		Status:        models.EpisodeStatusPending,
+		EpisodeType:   domainEpisode.EpisodeTypeActionVerification.ToModel(),
+		Status:        domainEpisode.EpisodeStatusPending.ToModel(),
 		LoopGuard:     models.EpisodeLoopGuard{MaxIterations: 8},
 		SchemaVersion: 1,
 		CreatedAt:     time.Now().UTC(),
@@ -51,7 +52,7 @@ func TestAppendFact_StatusTransitionPendingToInProgress(t *testing.T) {
 
 	// Episode starts as pending.
 	ep, _ := s.Get(ctx, epID)
-	if ep.Status != models.EpisodeStatusPending {
+	if ep.Status != domainEpisode.EpisodeStatusPending.ToModel() {
 		t.Fatalf("expected initial status pending, got %q", ep.Status)
 	}
 
@@ -60,7 +61,7 @@ func TestAppendFact_StatusTransitionPendingToInProgress(t *testing.T) {
 	}
 
 	ep, _ = s.Get(ctx, epID)
-	if ep.Status != models.EpisodeStatusInProgress {
+	if ep.Status != domainEpisode.EpisodeStatusInProgress.ToModel() {
 		t.Errorf("expected status in_progress after first AppendFact, got %q", ep.Status)
 	}
 	if len(ep.Evidence) != 1 {
@@ -96,7 +97,7 @@ func TestAppendFact_MultipleAppends_AccumulateEvidence(t *testing.T) {
 		t.Errorf("expected 3 evidence entries, got %d", len(ep.Evidence))
 	}
 	// Status should still be in_progress (not re-transitioned after first).
-	if ep.Status != models.EpisodeStatusInProgress {
+	if ep.Status != domainEpisode.EpisodeStatusInProgress.ToModel() {
 		t.Errorf("expected status in_progress, got %q", ep.Status)
 	}
 }
@@ -135,7 +136,7 @@ func TestAppendFact_ConcurrentAppends_NoLostUpdates(t *testing.T) {
 	if len(ep.Evidence) != workers {
 		t.Fatalf("expected %d evidence entries, got %d", workers, len(ep.Evidence))
 	}
-	if ep.Status != models.EpisodeStatusInProgress {
+	if ep.Status != domainEpisode.EpisodeStatusInProgress.ToModel() {
 		t.Fatalf("expected status in_progress, got %q", ep.Status)
 	}
 }
@@ -210,7 +211,7 @@ func TestWriteVerdict_ConvergesEpisode(t *testing.T) {
 	ep, _ := s.Get(ctx, epID)
 
 	// Status must be converged.
-	if ep.Status != models.EpisodeStatusConverged {
+	if ep.Status != domainEpisode.EpisodeStatusConverged.ToModel() {
 		t.Errorf("expected status converged, got %q", ep.Status)
 	}
 	// ConcludedAt must be set.
@@ -404,5 +405,132 @@ func TestWriteVerdict_MissingEpisodeReturnsError(t *testing.T) {
 		models.EpisodeVerdict{Result: models.EpisodeResultPass})
 	if err == nil {
 		t.Error("expected error for missing episode, got nil")
+	}
+}
+
+func TestWriteReviewState_TargetByEpisodeID(t *testing.T) {
+	s := store.NewMemoryEpisodeStore()
+	w := NewEpisodeWriter(s)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	ep1 := &models.Episode{
+		ID:            "ep-review-target",
+		ExecID:        "exec-review",
+		EpisodeType:   domainEpisode.EpisodeTypeActionVerification.ToModel(),
+		Status:        domainEpisode.EpisodeStatusEscalated.ToModel(),
+		SchemaVersion: 1,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+	ep2 := &models.Episode{
+		ID:            "ep-review-other",
+		ExecID:        "exec-review",
+		EpisodeType:   domainEpisode.EpisodeTypeActionVerification.ToModel(),
+		Status:        domainEpisode.EpisodeStatusInProgress.ToModel(),
+		SchemaVersion: 1,
+		CreatedAt:     now.Add(time.Second),
+		UpdatedAt:     now.Add(time.Second),
+	}
+	if err := s.Create(ctx, ep1); err != nil {
+		t.Fatalf("create ep1: %v", err)
+	}
+	if err := s.Create(ctx, ep2); err != nil {
+		t.Fatalf("create ep2: %v", err)
+	}
+
+	err := w.WriteReviewState(ctx, "exec-review", domainEpisode.ReviewActionInput{
+		EpisodeID: ep1.ID,
+		Status:    domainEpisode.ReviewStatusApproved,
+		Actor:     "reviewer-alice",
+		Note:      "approved by reviewer",
+	})
+	if err != nil {
+		t.Fatalf("WriteReviewState: %v", err)
+	}
+
+	got1, _ := s.Get(ctx, ep1.ID)
+	if got1.Status != domainEpisode.EpisodeStatusConverged.ToModel() {
+		t.Fatalf("expected ep1 status converged, got %q", got1.Status)
+	}
+	if got1.ConcludedAt == nil {
+		t.Fatal("expected ep1 concluded_at to be set")
+	}
+	if len(got1.HumanInterventions) != 1 {
+		t.Fatalf("expected ep1 1 intervention, got %d", len(got1.HumanInterventions))
+	}
+	if got1.HumanInterventions[0].Action != models.HumanActionResumed {
+		t.Fatalf("expected ep1 action resumed, got %q", got1.HumanInterventions[0].Action)
+	}
+
+	got2, _ := s.Get(ctx, ep2.ID)
+	if got2.Status != domainEpisode.EpisodeStatusInProgress.ToModel() {
+		t.Fatalf("expected ep2 unchanged in_progress, got %q", got2.Status)
+	}
+	if len(got2.HumanInterventions) != 0 {
+		t.Fatalf("expected ep2 no interventions, got %d", len(got2.HumanInterventions))
+	}
+}
+
+func TestWriteReviewState_FallbackTargetsMostRecentlyUpdatedEpisode(t *testing.T) {
+	s := store.NewMemoryEpisodeStore()
+	w := NewEpisodeWriter(s)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	epOld := &models.Episode{
+		ID:            "ep-review-old",
+		ExecID:        "exec-review-fallback",
+		EpisodeType:   domainEpisode.EpisodeTypeActionVerification.ToModel(),
+		Status:        domainEpisode.EpisodeStatusInProgress.ToModel(),
+		SchemaVersion: 1,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+	epNew := &models.Episode{
+		ID:            "ep-review-new",
+		ExecID:        "exec-review-fallback",
+		EpisodeType:   domainEpisode.EpisodeTypeActionVerification.ToModel(),
+		Status:        domainEpisode.EpisodeStatusInProgress.ToModel(),
+		SchemaVersion: 1,
+		CreatedAt:     now.Add(time.Second),
+		UpdatedAt:     now.Add(2 * time.Second),
+	}
+	if err := s.Create(ctx, epOld); err != nil {
+		t.Fatalf("create epOld: %v", err)
+	}
+	if err := s.Create(ctx, epNew); err != nil {
+		t.Fatalf("create epNew: %v", err)
+	}
+
+	err := w.WriteReviewState(ctx, "exec-review-fallback", domainEpisode.ReviewActionInput{
+		Status: domainEpisode.ReviewStatusAborted,
+		Actor:  "reviewer-bob",
+		Note:   "aborted run",
+	})
+	if err != nil {
+		t.Fatalf("WriteReviewState: %v", err)
+	}
+
+	gotOld, _ := s.Get(ctx, epOld.ID)
+	if gotOld.Status != domainEpisode.EpisodeStatusInProgress.ToModel() {
+		t.Fatalf("expected old episode unchanged, got %q", gotOld.Status)
+	}
+	if len(gotOld.HumanInterventions) != 0 {
+		t.Fatalf("expected old episode no interventions, got %d", len(gotOld.HumanInterventions))
+	}
+
+	gotNew, _ := s.Get(ctx, epNew.ID)
+	if gotNew.Status != domainEpisode.EpisodeStatusFailed.ToModel() {
+		t.Fatalf("expected new episode failed, got %q", gotNew.Status)
+	}
+	if gotNew.ConcludedAt == nil {
+		t.Fatal("expected new episode concluded_at to be set")
+	}
+	if len(gotNew.HumanInterventions) != 1 {
+		t.Fatalf("expected new episode 1 intervention, got %d", len(gotNew.HumanInterventions))
+	}
+	if gotNew.HumanInterventions[0].Action != models.HumanActionAborted {
+		t.Fatalf("expected new episode action aborted, got %q", gotNew.HumanInterventions[0].Action)
 	}
 }

@@ -57,3 +57,14 @@ These are currently allowed while keeping business orchestration clean:
 - Keep `server.go` as thin shell only.
 - Consider moving audit write side-effect into dedicated application service.
 - Continue enum boundary validation and internal strong typing migration.
+
+## Latest Progress Notes (2026-05 follow-up)
+
+- Runtime-layer Episode enum usage has been aligned to domain mapping in migrated paths (`engine`, `application`, `projection`, `domain transitions`).
+- Test-layer Episode enum usage is now also aligned to domain mapping in `internal/engine`, `internal/store`, and `internal/api` tests.
+- New writer consistency coverage added for review-state updates: explicit episode targeting and fallback latest-episode selection.
+
+## Remaining Gaps (Current)
+
+- Continue extracting additional domain-heavy semantics from `pkg/models` while preserving storage/json compatibility.
+- Resolve repo-wide `go test ./...` blocker in `internal/api/docs` (missing `github.com/swaggo/swag`) to restore full-suite green baseline.
