@@ -8,10 +8,13 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	appSystem "github.com/Trin9/SynapseFlow/backend/internal/application/system"
 )
 
 func TestHealth(t *testing.T) {
 	s := NewServer()
+	s.systemSvc = &appSystem.Service{}
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	rec := httptest.NewRecorder()
 	s.router.ServeHTTP(rec, req)

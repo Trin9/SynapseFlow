@@ -16,18 +16,12 @@ import (
 // @Success 200 {object} healthResponse
 // @Router /health [get]
 func (s *Server) handleHealth(c *gin.Context) {
-	// Enhanced: check MCP connectivity
-	mcpStatus := "ok"
-	if _, err := s.mcpMgr.ListTools(c.Request.Context()); err != nil {
-		mcpStatus = "degraded: " + err.Error()
-	}
-	dbStatus := "disabled"
-	if s.db != nil {
-		if err := s.db.PingContext(c.Request.Context()); err != nil {
-			dbStatus = "degraded: " + err.Error()
-		} else {
-			dbStatus = "ok"
-		}
+	mcpStatus := "unknown"
+	dbStatus := "unknown"
+	if s.systemSvc != nil {
+		status := s.systemSvc.ProbeDependencies(c.Request.Context())
+		mcpStatus = status.MCP
+		dbStatus = status.DB
 	}
 	c.JSON(http.StatusOK, healthResponse{
 		Status:  "ok",

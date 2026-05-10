@@ -11,6 +11,7 @@ import (
 	appDAG "github.com/Trin9/SynapseFlow/backend/internal/application/dag"
 	appExecution "github.com/Trin9/SynapseFlow/backend/internal/application/execution"
 	appOps "github.com/Trin9/SynapseFlow/backend/internal/application/ops"
+	appSystem "github.com/Trin9/SynapseFlow/backend/internal/application/system"
 	appWorkspace "github.com/Trin9/SynapseFlow/backend/internal/application/workspace"
 	workspaceView "github.com/Trin9/SynapseFlow/backend/internal/application/workspace/view"
 	"github.com/Trin9/SynapseFlow/backend/internal/auth"
@@ -68,6 +69,7 @@ type Server struct {
 	dagService    *appDAG.Service
 	execService   *appExecution.Service
 	opsService    *appOps.Service
+	systemSvc     *appSystem.Service
 	workspaceSvc  *appWorkspace.Service
 }
 

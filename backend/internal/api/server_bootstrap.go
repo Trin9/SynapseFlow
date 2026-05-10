@@ -7,6 +7,7 @@ import (
 	appDAG "github.com/Trin9/SynapseFlow/backend/internal/application/dag"
 	appExecution "github.com/Trin9/SynapseFlow/backend/internal/application/execution"
 	appOps "github.com/Trin9/SynapseFlow/backend/internal/application/ops"
+	appSystem "github.com/Trin9/SynapseFlow/backend/internal/application/system"
 	appWorkspace "github.com/Trin9/SynapseFlow/backend/internal/application/workspace"
 	"github.com/Trin9/SynapseFlow/backend/internal/config"
 	"github.com/Trin9/SynapseFlow/backend/internal/engine"
@@ -202,6 +203,10 @@ func NewServer(opts ...ServerOption) *Server {
 	}
 	s.dagService = &appDAG.Service{DAGs: s.dags}
 	s.opsService = &appOps.Service{Audits: s.audits, Memory: s.memory}
+	s.systemSvc = &appSystem.Service{MCP: s.mcpMgr}
+	if s.db != nil {
+		s.systemSvc.DB = s.db
+	}
 	s.workspaceSvc = &appWorkspace.Service{
 		Executions:              s.execs,
 		Episodes:                s.episodes,
