@@ -166,23 +166,6 @@ func WithMCPManager(mgr mcp.ToolCaller) ServerOption {
 // NewServer and setupRouter moved to
 // server_bootstrap.go and server_router.go.
 
-// List Tools returns all available MCP tools.
-// @Summary List Tools
-// @Description Returns all available MCP tools.
-// @Tags Tools
-// @Produce json
-// @Success 200 {array} object "MCP tool list"
-// @Failure 500 {object} apiError
-// @Router /api/v1/tools [get]
-func (s *Server) handleListTools(c *gin.Context) {
-	tools, err := s.mcpMgr.ListTools(c.Request.Context())
-	if err != nil {
-		writeError(c, http.StatusInternalServerError, "tools_error", "failed to list tools", err.Error())
-		return
-	}
-	c.JSON(http.StatusOK, tools)
-}
-
 // Run starts the HTTP server on the given address.
 func (s *Server) Run(addr string) error {
 	logger.L().Infow("Starting Synapse server", "addr", addr)
