@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	domainEpisode "github.com/Trin9/SynapseFlow/backend/internal/domain/episode"
 	"github.com/Trin9/SynapseFlow/backend/pkg/models"
 )
 
@@ -85,7 +86,7 @@ func (e *ScriptExecutor) Execute(ctx context.Context, node models.Node, state *m
 
 			// Handle tracking: if config specifies episode_handle, record a structured identifier.
 			if handleType := configString(node.Config, "episode_handle"); handleType != "" && output != "" {
-				_ = e.Writer.AppendHandle(ctx, episodeID, models.EpisodeHandleType(handleType), output, node.ID)
+				_ = e.Writer.AppendHandle(ctx, episodeID, domainEpisode.EpisodeHandleType(handleType).ToModel(), output, node.ID)
 			}
 		}
 	}

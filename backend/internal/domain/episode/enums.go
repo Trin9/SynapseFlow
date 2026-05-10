@@ -135,3 +135,39 @@ func (t EpisodeEvidenceType) IsValid() bool {
 func (t EpisodeEvidenceType) ToModel() models.EpisodeEvidenceType {
 	return models.EpisodeEvidenceType(t)
 }
+
+// EpisodeHandleType is the domain enum for episode handle kind.
+type EpisodeHandleType string
+
+const (
+	EpisodeHandleTypeRequestID    EpisodeHandleType = "request_id"
+	EpisodeHandleTypeTraceID      EpisodeHandleType = "trace_id"
+	EpisodeHandleTypeOrderID      EpisodeHandleType = "order_id"
+	EpisodeHandleTypeSessionID    EpisodeHandleType = "session_id"
+	EpisodeHandleTypeGitRef       EpisodeHandleType = "git_ref"
+	EpisodeHandleTypeDeployRev    EpisodeHandleType = "deploy_revision"
+	EpisodeHandleTypeFileLocation EpisodeHandleType = "file_location"
+	EpisodeHandleTypePodName      EpisodeHandleType = "pod_name"
+	EpisodeHandleTypeCustom       EpisodeHandleType = "custom"
+)
+
+func (t EpisodeHandleType) IsValid() bool {
+	switch t {
+	case EpisodeHandleTypeRequestID,
+		EpisodeHandleTypeTraceID,
+		EpisodeHandleTypeOrderID,
+		EpisodeHandleTypeSessionID,
+		EpisodeHandleTypeGitRef,
+		EpisodeHandleTypeDeployRev,
+		EpisodeHandleTypeFileLocation,
+		EpisodeHandleTypePodName,
+		EpisodeHandleTypeCustom:
+		return true
+	default:
+		return false
+	}
+}
+
+func (t EpisodeHandleType) ToModel() models.EpisodeHandleType {
+	return models.EpisodeHandleType(t)
+}

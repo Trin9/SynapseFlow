@@ -65,6 +65,7 @@ These are currently allowed while keeping business orchestration clean:
 - New writer consistency coverage added for review-state updates: explicit episode targeting and fallback latest-episode selection.
 - Domain verdict enum mapping (`EpisodeResult`/`EpisodeConfidence`) is now used in runtime verdict parse and memory-extraction decision paths.
 - Domain trigger/evidence enum mapping (`EpisodeTriggerType`/`EpisodeEvidenceType`) is now used in runtime episode creation and evidence-write paths.
+- Domain handle enum mapping (`EpisodeHandleType`) is now used in runtime handle-write path and aligned tests.
 
 ## Remaining Gaps (Current)
 

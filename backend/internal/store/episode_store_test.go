@@ -232,8 +232,8 @@ func TestMemoryEpisodeStore_HandlesRoundTrip(t *testing.T) {
 
 	ep := baseEpisode("ep-h", "exec-001")
 	ep.Handles = []models.EpisodeHandle{
-		{Type: models.HandleTypeSessionID, Value: "sess-xyz", Source: "n1", ExtractedAt: time.Now().UTC()},
-		{Type: models.HandleTypeOrderID, Value: "order-123", Source: "n2", ExtractedAt: time.Now().UTC()},
+		{Type: domainEpisode.EpisodeHandleTypeSessionID.ToModel(), Value: "sess-xyz", Source: "n1", ExtractedAt: time.Now().UTC()},
+		{Type: domainEpisode.EpisodeHandleTypeOrderID.ToModel(), Value: "order-123", Source: "n2", ExtractedAt: time.Now().UTC()},
 	}
 	_ = s.Create(ctx, ep)
 
@@ -241,7 +241,7 @@ func TestMemoryEpisodeStore_HandlesRoundTrip(t *testing.T) {
 	if len(got.Handles) != 2 {
 		t.Fatalf("expected 2 handles, got %d", len(got.Handles))
 	}
-	if got.Handles[0].Type != models.HandleTypeSessionID {
+	if got.Handles[0].Type != domainEpisode.EpisodeHandleTypeSessionID.ToModel() {
 		t.Errorf("handle[0] type: got %q", got.Handles[0].Type)
 	}
 	if got.Handles[1].Value != "order-123" {

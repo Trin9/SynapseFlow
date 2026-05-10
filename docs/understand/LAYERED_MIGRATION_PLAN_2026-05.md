@@ -56,6 +56,7 @@ Completed seeds:
 - Review-state coverage hardening: added writer tests for explicit episode targeting and fallback-to-latest episode behavior.
 - Domain verdict semantics slice: added domain `EpisodeResult` and `EpisodeConfidence` enums with model mapping; runtime verdict parse/extraction paths now use domain mappings.
 - Domain trigger/evidence semantics slice: added domain `EpisodeTriggerType` and `EpisodeEvidenceType` enums with model mapping; runtime create/write paths now consume domain mappings.
+- Domain handle semantics slice: added domain `EpisodeHandleType` with model mapping; runtime handle write path and related tests now consume domain mappings.
 
 Remaining:
 
@@ -118,6 +119,11 @@ Latest batch verification (verdict semantics follow-up):
 Latest batch verification (trigger/evidence semantics follow-up):
 
 - Automated: `go test ./internal/domain/episode ./internal/application/execution ./internal/engine ./internal/api`
+- Stability: `go test ./internal/api -run TestEpisodeLifecycle_AutoCreateAndConverge -count=20`
+
+Latest batch verification (handle semantics follow-up):
+
+- Automated: `go test ./internal/domain/episode ./internal/engine ./internal/store ./internal/api`
 - Stability: `go test ./internal/api -run TestEpisodeLifecycle_AutoCreateAndConverge -count=20`
 
 ## Next Recommended Order

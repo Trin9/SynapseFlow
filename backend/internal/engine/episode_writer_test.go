@@ -372,7 +372,7 @@ func TestHumanCorrect_MultipleCorrections(t *testing.T) {
 			nil, "injected",
 			func(ep *models.Episode) {
 				ep.Handles = append(ep.Handles, models.EpisodeHandle{
-					Type:  models.HandleTypeSessionID,
+					Type:  domainEpisode.EpisodeHandleTypeSessionID.ToModel(),
 					Value: "sess-abc",
 				})
 			},
