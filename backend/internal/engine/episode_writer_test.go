@@ -11,6 +11,7 @@ package engine
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -110,6 +111,33 @@ func TestAppendFact_StatusDoesNotRegressAfterInProgress(t *testing.T) {
 	// Manually patch status to in_progress (already set) and append again.
 	// Status must NOT revert to pending.
 	_ = w.AppendFact(ctx, epID, "n3", models.NodeTypeScript, "c", "z")
+}
+
+func TestAppendFact_ConcurrentAppends_NoLostUpdates(t *testing.T) {
+	s, w, epID := newTestEpisode(t)
+	ctx := context.Background()
+
+	const workers = 24
+	var wg sync.WaitGroup
+	wg.Add(workers)
+
+	for i := 0; i < workers; i++ {
+		go func(i int) {
+			defer wg.Done()
+			if err := w.AppendFact(ctx, epID, "node-concurrent", models.NodeTypeScript, "step", "payload"); err != nil {
+				t.Errorf("AppendFact[%d]: %v", i, err)
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	ep, _ := s.Get(ctx, epID)
+	if len(ep.Evidence) != workers {
+		t.Fatalf("expected %d evidence entries, got %d", workers, len(ep.Evidence))
+	}
+	if ep.Status != models.EpisodeStatusInProgress {
+		t.Fatalf("expected status in_progress, got %q", ep.Status)
+	}
 }
 
 // ---------------------------------------------------------------------------

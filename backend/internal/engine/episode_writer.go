@@ -13,6 +13,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	workspaceView "github.com/Trin9/SynapseFlow/backend/internal/application/workspace/view"
@@ -25,11 +26,19 @@ import (
 // EpisodeWriter wraps an EpisodeStore and enforces per-node-type write rules.
 type EpisodeWriter struct {
 	store store.EpisodeStore
+	locks sync.Map // map[episodeID]*sync.Mutex
 }
 
 // NewEpisodeWriter creates an EpisodeWriter backed by the given store.
 func NewEpisodeWriter(s store.EpisodeStore) *EpisodeWriter {
 	return &EpisodeWriter{store: s}
+}
+
+func (w *EpisodeWriter) lockEpisode(episodeID string) func() {
+	v, _ := w.locks.LoadOrStore(episodeID, &sync.Mutex{})
+	mu := v.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
 }
 
 // ---------------------------------------------------------------------------
@@ -47,6 +56,9 @@ func (w *EpisodeWriter) AppendFact(
 	label string,
 	content string,
 ) error {
+	unlock := w.lockEpisode(episodeID)
+	defer unlock()
+
 	ep, err := w.store.Get(ctx, episodeID)
 	if err != nil {
 		return fmt.Errorf("episode_writer.AppendFact get: %w", err)
@@ -86,6 +98,9 @@ func (w *EpisodeWriter) AppendFactWithSpec(
 	content string,
 	spec *models.EvidenceCollectorSpec,
 ) error {
+	unlock := w.lockEpisode(episodeID)
+	defer unlock()
+
 	ep, err := w.store.Get(ctx, episodeID)
 	if err != nil {
 		return fmt.Errorf("episode_writer.AppendFactWithSpec get: %w", err)
@@ -123,6 +138,9 @@ func (w *EpisodeWriter) AppendFactWithRef(
 	contentType string,
 	content string,
 ) error {
+	unlock := w.lockEpisode(episodeID)
+	defer unlock()
+
 	ep, err := w.store.Get(ctx, episodeID)
 	if err != nil {
 		return fmt.Errorf("episode_writer.AppendFactWithRef get: %w", err)
@@ -182,6 +200,9 @@ func (w *EpisodeWriter) AppendHandle(
 	value string,
 	sourceNodeID string,
 ) error {
+	unlock := w.lockEpisode(episodeID)
+	defer unlock()
+
 	ep, err := w.store.Get(ctx, episodeID)
 	if err != nil {
 		return fmt.Errorf("episode_writer.AppendHandle get: %w", err)
@@ -218,6 +239,9 @@ func (w *EpisodeWriter) WriteVerdict(
 	nodeID string,
 	verdict models.EpisodeVerdict,
 ) error {
+	unlock := w.lockEpisode(episodeID)
+	defer unlock()
+
 	ep, err := w.store.Get(ctx, episodeID)
 	if err != nil {
 		return fmt.Errorf("episode_writer.WriteVerdict get: %w", err)
@@ -274,6 +298,9 @@ func (w *EpisodeWriter) HumanCorrect(
 	newValue interface{},
 	applyFn func(ep *models.Episode),
 ) error {
+	unlock := w.lockEpisode(episodeID)
+	defer unlock()
+
 	ep, err := w.store.Get(ctx, episodeID)
 	if err != nil {
 		return fmt.Errorf("episode_writer.HumanCorrect get: %w", err)
@@ -311,6 +338,9 @@ func (w *EpisodeWriter) AppendHumanIntervention(
 	action models.HumanInterventionAction,
 	detail string,
 ) error {
+	unlock := w.lockEpisode(episodeID)
+	defer unlock()
+
 	ep, err := w.store.Get(ctx, episodeID)
 	if err != nil {
 		return fmt.Errorf("episode_writer.AppendHumanIntervention get: %w", err)
@@ -345,6 +375,9 @@ func (w *EpisodeWriter) AppendProcessTraceEntry(
 	episodeID string,
 	entry workspaceView.ProcessTraceEntryView,
 ) error {
+	unlock := w.lockEpisode(episodeID)
+	defer unlock()
+
 	ep, err := w.store.Get(ctx, episodeID)
 	if err != nil {
 		return fmt.Errorf("episode_writer.AppendProcessTraceEntry get: %w", err)
@@ -394,6 +427,9 @@ func (w *EpisodeWriter) UpdateDisplaySummary(
 	episodeID string,
 	summary string,
 ) error {
+	unlock := w.lockEpisode(episodeID)
+	defer unlock()
+
 	ep, err := w.store.Get(ctx, episodeID)
 	if err != nil {
 		return fmt.Errorf("episode_writer.UpdateDisplaySummary get: %w", err)
@@ -454,6 +490,14 @@ func (w *EpisodeWriter) WriteReviewState(
 		}
 	}
 
+	unlock := w.lockEpisode(target.ID)
+	defer unlock()
+
+	target, err = w.store.Get(ctx, target.ID)
+	if err != nil {
+		return fmt.Errorf("episode_writer.WriteReviewState get: %w", err)
+	}
+
 	now := time.Now().UTC()
 	action := domainEpisode.ReviewStatusToAction(req.Status)
 	intervention := models.HumanIntervention{
@@ -498,6 +542,9 @@ func (w *EpisodeWriter) AppendReplayTimelineRange(
 	factID string,
 	start, end int,
 ) error {
+	unlock := w.lockEpisode(episodeID)
+	defer unlock()
+
 	ep, err := w.store.Get(ctx, episodeID)
 	if err != nil {
 		return fmt.Errorf("episode_writer.AppendReplayTimelineRange get: %w", err)

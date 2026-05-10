@@ -51,6 +51,7 @@ Completed seeds:
 - Follow-up hardening: domain `EpisodeStatus` mapping now also used for pending checks in episode writer and transition policy mapping in `internal/domain/episode/transitions.go`.
 - Projection alignment: workspace projector replay-percentage status buckets now use domain `EpisodeStatus` mappings instead of direct model constants.
 - Projection follow-up: process-trace action-stage detection now uses domain `EpisodeType` mapping (`action_verification`) instead of direct model enum.
+- Concurrency hardening: `EpisodeWriter` now serializes writes per `episode_id` to avoid lost updates under concurrent node writes (evidence append/status transition race).
 
 Remaining:
 
@@ -95,6 +96,9 @@ Latest batch verification (EpisodeStatus migration follow-up):
   - `GET /api/v1/executions/:id` reaches `status=completed`.
   - `GET /api/v1/executions/:id/episodes` confirms episode `status=converged` with evidence and verdict.
   - `GET /api/v1/executions/:id/episodes?view=summary` confirms `default_replay_percent=100` for converged status.
+- Additional stability verification:
+  - `go test ./internal/engine` includes concurrent append regression (`TestAppendFact_ConcurrentAppends_NoLostUpdates`).
+  - `go test ./internal/api -run TestEpisodeLifecycle_AutoCreateAndConverge -count=30` passes to validate lifecycle stability under repeated runs.
 
 ## Next Recommended Order
 
