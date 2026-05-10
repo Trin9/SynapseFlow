@@ -72,7 +72,7 @@ func EpisodeToProcessTrace(ep *models.Episode) []workspaceView.ProcessTraceEntry
 	for i, ev := range ep.Evidence {
 		roundN++
 		stage := fmt.Sprintf("Round %d", roundN)
-		if i == 0 && ep.EpisodeType == models.EpisodeTypeActionVerification {
+		if i == 0 && ep.EpisodeType == domainEpisode.EpisodeTypeActionVerification.ToModel() {
 			stage = "Action"
 		}
 		startPct, endPct := rangeForIndex(i, len(ep.Evidence))

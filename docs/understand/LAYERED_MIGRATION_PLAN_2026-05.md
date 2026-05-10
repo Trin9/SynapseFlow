@@ -50,6 +50,7 @@ Completed seeds:
 - Second migration slice added: domain `EpisodeStatus` enum with model mapping; write paths now consume domain status mapping for pending/in_progress/converged transitions.
 - Follow-up hardening: domain `EpisodeStatus` mapping now also used for pending checks in episode writer and transition policy mapping in `internal/domain/episode/transitions.go`.
 - Projection alignment: workspace projector replay-percentage status buckets now use domain `EpisodeStatus` mappings instead of direct model constants.
+- Projection follow-up: process-trace action-stage detection now uses domain `EpisodeType` mapping (`action_verification`) instead of direct model enum.
 
 Remaining:
 
