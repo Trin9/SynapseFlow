@@ -65,7 +65,7 @@ func (w *EpisodeWriter) AppendFact(
 	}
 	ev := models.EpisodeEvidence{
 		ID:          uuid.New().String(),
-		Type:        models.EvidenceTypeFact,
+		Type:        domainEpisode.EpisodeEvidenceTypeFact.ToModel(),
 		NodeID:      nodeID,
 		NodeType:    nodeType,
 		Label:       label,
@@ -107,7 +107,7 @@ func (w *EpisodeWriter) AppendFactWithSpec(
 	}
 	ev := models.EpisodeEvidence{
 		ID:            uuid.New().String(),
-		Type:          models.EvidenceTypeFact,
+		Type:          domainEpisode.EpisodeEvidenceTypeFact.ToModel(),
 		NodeID:        nodeID,
 		NodeType:      nodeType,
 		Label:         label,
@@ -164,7 +164,7 @@ func (w *EpisodeWriter) AppendFactWithRef(
 
 	ev := models.EpisodeEvidence{
 		ID:          evID,
-		Type:        models.EvidenceTypeFact,
+		Type:        domainEpisode.EpisodeEvidenceTypeFact.ToModel(),
 		NodeID:      nodeID,
 		NodeType:    nodeType,
 		Label:       label,
@@ -399,7 +399,7 @@ func (w *EpisodeWriter) AppendProcessTraceEntry(
 	label := fmt.Sprintf("[%s] %s", entry.Stage, entry.Title)
 	ev := models.EpisodeEvidence{
 		ID:            evID,
-		Type:          models.EvidenceTypeFact,
+		Type:          domainEpisode.EpisodeEvidenceTypeFact.ToModel(),
 		NodeType:      models.NodeType(""),
 		Label:         label,
 		Content:       entry.Detail,

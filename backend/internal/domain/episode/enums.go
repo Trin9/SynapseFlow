@@ -90,3 +90,48 @@ func (c EpisodeConfidence) IsValid() bool {
 func (c EpisodeConfidence) ToModel() models.EpisodeConfidence {
 	return models.EpisodeConfidence(c)
 }
+
+// EpisodeTriggerType is the domain enum for episode trigger source.
+type EpisodeTriggerType string
+
+const (
+	EpisodeTriggerAlert     EpisodeTriggerType = "alert"
+	EpisodeTriggerWebhook   EpisodeTriggerType = "webhook"
+	EpisodeTriggerManual    EpisodeTriggerType = "manual"
+	EpisodeTriggerScheduled EpisodeTriggerType = "scheduled"
+)
+
+func (t EpisodeTriggerType) IsValid() bool {
+	switch t {
+	case EpisodeTriggerAlert, EpisodeTriggerWebhook, EpisodeTriggerManual, EpisodeTriggerScheduled:
+		return true
+	default:
+		return false
+	}
+}
+
+func (t EpisodeTriggerType) ToModel() models.EpisodeTriggerType {
+	return models.EpisodeTriggerType(t)
+}
+
+// EpisodeEvidenceType is the domain enum for episode evidence entry type.
+type EpisodeEvidenceType string
+
+const (
+	EpisodeEvidenceTypeFact            EpisodeEvidenceType = "fact"
+	EpisodeEvidenceTypeInference       EpisodeEvidenceType = "inference"
+	EpisodeEvidenceTypeHumanCorrection EpisodeEvidenceType = "human_correction"
+)
+
+func (t EpisodeEvidenceType) IsValid() bool {
+	switch t {
+	case EpisodeEvidenceTypeFact, EpisodeEvidenceTypeInference, EpisodeEvidenceTypeHumanCorrection:
+		return true
+	default:
+		return false
+	}
+}
+
+func (t EpisodeEvidenceType) ToModel() models.EpisodeEvidenceType {
+	return models.EpisodeEvidenceType(t)
+}

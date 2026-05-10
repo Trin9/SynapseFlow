@@ -64,6 +64,7 @@ These are currently allowed while keeping business orchestration clean:
 - Test-layer Episode enum usage is now also aligned to domain mapping in `internal/engine`, `internal/store`, and `internal/api` tests.
 - New writer consistency coverage added for review-state updates: explicit episode targeting and fallback latest-episode selection.
 - Domain verdict enum mapping (`EpisodeResult`/`EpisodeConfidence`) is now used in runtime verdict parse and memory-extraction decision paths.
+- Domain trigger/evidence enum mapping (`EpisodeTriggerType`/`EpisodeEvidenceType`) is now used in runtime episode creation and evidence-write paths.
 
 ## Remaining Gaps (Current)
 

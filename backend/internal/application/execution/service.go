@@ -137,7 +137,7 @@ func (s *Service) StartExecution(dag *models.DAGConfig, initialState *models.Glo
 				ExecID:        execID,
 				EpisodeType:   domainType.ToModel(),
 				Status:        domainEpisode.EpisodeStatusPending.ToModel(),
-				Trigger:       &models.EpisodeTrigger{Type: models.EpisodeTriggerManual},
+				Trigger:       &models.EpisodeTrigger{Type: domainEpisode.EpisodeTriggerManual.ToModel()},
 				LoopGuard:     models.EpisodeLoopGuard{MaxIterations: 10},
 				SchemaVersion: 1,
 				CreatedAt:     time.Now().UTC(),
