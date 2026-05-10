@@ -195,13 +195,9 @@ func (s *Server) handleResumeExecution(c *gin.Context) {
 	var resumeBody resumeExecutionRequest
 	_ = c.ShouldBindJSON(&resumeBody)
 	action := models.HumanInterventionAction(resumeBody.Action)
-	if action != "" {
-		switch action {
-		case models.HumanActionResumed, models.HumanActionAborted, models.HumanActionStateOverride:
-		default:
-			writeError(c, http.StatusBadRequest, "invalid_request", "invalid resume action", resumeBody.Action)
-			return
-		}
+	if action != "" && !action.IsResumeAction() {
+		writeError(c, http.StatusBadRequest, "invalid_request", "invalid resume action", resumeBody.Action)
+		return
 	}
 
 	exec, err := s.execService.ResumeExecution(c.Request.Context(), appExecution.ResumeInput{

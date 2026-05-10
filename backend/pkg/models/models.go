@@ -117,6 +117,25 @@ type NodeResult struct {
 	TokensOut int           `json:"tokens_out,omitempty"`
 }
 
+// NodeResultStatus represents the execution outcome of a node.
+type NodeResultStatus string
+
+const (
+	NodeResultSuccess NodeResultStatus = "success"
+	NodeResultError   NodeResultStatus = "error"
+	NodeResultSkipped NodeResultStatus = "skipped"
+)
+
+// IsValid reports whether the node result status is known.
+func (s NodeResultStatus) IsValid() bool {
+	switch s {
+	case NodeResultSuccess, NodeResultError, NodeResultSkipped:
+		return true
+	default:
+		return false
+	}
+}
+
 // Experience stores a reusable troubleshooting memory entry.
 type Experience struct {
 	ID          string    `json:"id"`
@@ -321,6 +340,16 @@ const (
 	EpisodeTypeInvestigationStep  EpisodeType = "investigation_step"
 )
 
+// IsValid reports whether episode type is known.
+func (t EpisodeType) IsValid() bool {
+	switch t {
+	case EpisodeTypeActionVerification, EpisodeTypeInvestigationStep:
+		return true
+	default:
+		return false
+	}
+}
+
 // EpisodeStatus represents the lifecycle state of an Episode.
 type EpisodeStatus string
 
@@ -332,6 +361,16 @@ const (
 	EpisodeStatusFailed     EpisodeStatus = "failed"
 )
 
+// IsValid reports whether episode status is known.
+func (s EpisodeStatus) IsValid() bool {
+	switch s {
+	case EpisodeStatusPending, EpisodeStatusInProgress, EpisodeStatusConverged, EpisodeStatusEscalated, EpisodeStatusFailed:
+		return true
+	default:
+		return false
+	}
+}
+
 // EpisodeResult is the business outcome recorded in a Verdict.
 type EpisodeResult string
 
@@ -340,6 +379,16 @@ const (
 	EpisodeResultFail         EpisodeResult = "fail"
 	EpisodeResultInconclusive EpisodeResult = "inconclusive"
 )
+
+// IsValid reports whether episode result is known.
+func (r EpisodeResult) IsValid() bool {
+	switch r {
+	case EpisodeResultPass, EpisodeResultFail, EpisodeResultInconclusive:
+		return true
+	default:
+		return false
+	}
+}
 
 // EpisodeConfidence is the confidence level recorded in a Verdict.
 type EpisodeConfidence string
@@ -350,6 +399,16 @@ const (
 	EpisodeConfidenceLow    EpisodeConfidence = "low"
 )
 
+// IsValid reports whether episode confidence is known.
+func (c EpisodeConfidence) IsValid() bool {
+	switch c {
+	case EpisodeConfidenceHigh, EpisodeConfidenceMedium, EpisodeConfidenceLow:
+		return true
+	default:
+		return false
+	}
+}
+
 // EpisodeTriggerType identifies the source of an Episode trigger.
 type EpisodeTriggerType string
 
@@ -359,6 +418,16 @@ const (
 	EpisodeTriggerManual    EpisodeTriggerType = "manual"
 	EpisodeTriggerScheduled EpisodeTriggerType = "scheduled"
 )
+
+// IsValid reports whether episode trigger type is known.
+func (t EpisodeTriggerType) IsValid() bool {
+	switch t {
+	case EpisodeTriggerAlert, EpisodeTriggerWebhook, EpisodeTriggerManual, EpisodeTriggerScheduled:
+		return true
+	default:
+		return false
+	}
+}
 
 // EpisodeTrigger describes what initiated the Episode.
 type EpisodeTrigger struct {
@@ -482,6 +551,32 @@ const (
 	HumanActionResumed               HumanInterventionAction = "resumed"
 	HumanActionAborted               HumanInterventionAction = "aborted"
 )
+
+// IsValid reports whether human intervention action is known.
+func (a HumanInterventionAction) IsValid() bool {
+	switch a {
+	case HumanActionStateOverride,
+		HumanActionEvidenceMarkedInvalid,
+		HumanActionHandleInjected,
+		HumanActionHypothesisCorrected,
+		HumanActionSuspended,
+		HumanActionResumed,
+		HumanActionAborted:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsResumeAction reports whether action is allowed for execution resume API.
+func (a HumanInterventionAction) IsResumeAction() bool {
+	switch a {
+	case HumanActionResumed, HumanActionAborted, HumanActionStateOverride:
+		return true
+	default:
+		return false
+	}
+}
 
 // HumanIntervention records a structured Human Node action on an Episode
 // per the Episode Schema v1 spec (section 5.3).

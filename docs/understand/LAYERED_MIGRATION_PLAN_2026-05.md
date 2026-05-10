@@ -59,6 +59,8 @@ Completed examples:
 - Execution status boundary validation.
 - Review status domain typing and validation.
 - Resume action validation and typed application input.
+- Added shared enum validators in `pkg/models` for Episode and human-action enums.
+- Execution resume flow now uses enum helper checks (`IsResumeAction`) and typed node-result status comparison in application layer.
 
 Remaining:
 

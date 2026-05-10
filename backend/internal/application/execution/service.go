@@ -286,7 +286,7 @@ func (s *Service) ResumeExecution(ctx context.Context, input ResumeInput) (*mode
 
 	completedNodes := make(map[string]models.NodeResult)
 	for _, res := range exec.Results {
-		if res.Status == "success" {
+		if models.NodeResultStatus(res.Status) == models.NodeResultSuccess {
 			completedNodes[res.NodeID] = res
 		}
 	}
