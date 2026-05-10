@@ -41,9 +41,9 @@ func EpisodeToSummary(ep *models.Episode) workspaceView.EpisodeSummaryView {
 		HandleCount:   len(ep.Handles),
 	}
 	switch ep.Status {
-	case models.EpisodeStatusConverged, models.EpisodeStatusEscalated, models.EpisodeStatusFailed:
+	case domainEpisode.EpisodeStatusConverged.ToModel(), domainEpisode.EpisodeStatusEscalated.ToModel(), domainEpisode.EpisodeStatusFailed.ToModel():
 		sv.DefaultReplayPercent = 100
-	case models.EpisodeStatusInProgress:
+	case domainEpisode.EpisodeStatusInProgress.ToModel():
 		sv.DefaultReplayPercent = 50
 	}
 	if ep.Verdict != nil {

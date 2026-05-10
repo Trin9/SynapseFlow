@@ -11,14 +11,14 @@ import (
 // ApplyExecutionTerminalStatus updates in-progress episode status based on execution terminal status.
 // Returns true when episode was changed.
 func ApplyExecutionTerminalStatus(ep *models.Episode, executionStatus models.ExecutionStatus, now time.Time) bool {
-	if ep == nil || ep.Status != models.EpisodeStatusInProgress {
+	if ep == nil || ep.Status != EpisodeStatusInProgress.ToModel() {
 		return false
 	}
 	switch executionStatus {
 	case models.StatusCompleted:
-		ep.Status = models.EpisodeStatusConverged
+		ep.Status = EpisodeStatusConverged.ToModel()
 	case models.StatusFailed:
-		ep.Status = models.EpisodeStatusFailed
+		ep.Status = EpisodeStatusFailed.ToModel()
 	default:
 		return false
 	}
@@ -43,14 +43,14 @@ type HumanReviewDisplay struct {
 func ReviewMutationFromStatus(status ReviewStatus, current models.EpisodeStatus) ReviewStateMutation {
 	switch status {
 	case ReviewStatusApproved:
-		if current == models.EpisodeStatusEscalated {
-			return ReviewStateMutation{NewStatus: models.EpisodeStatusConverged, SetConcluded: true}
+		if current == EpisodeStatusEscalated.ToModel() {
+			return ReviewStateMutation{NewStatus: EpisodeStatusConverged.ToModel(), SetConcluded: true}
 		}
 		return ReviewStateMutation{}
 	case ReviewStatusAborted:
-		return ReviewStateMutation{NewStatus: models.EpisodeStatusFailed, SetConcluded: true}
+		return ReviewStateMutation{NewStatus: EpisodeStatusFailed.ToModel(), SetConcluded: true}
 	case ReviewStatusOverridden:
-		return ReviewStateMutation{NewStatus: models.EpisodeStatusConverged, SetConcluded: true, ApplyConclusion: true}
+		return ReviewStateMutation{NewStatus: EpisodeStatusConverged.ToModel(), SetConcluded: true, ApplyConclusion: true}
 	default:
 		return ReviewStateMutation{}
 	}

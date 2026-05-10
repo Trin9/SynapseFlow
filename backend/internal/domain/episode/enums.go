@@ -22,3 +22,27 @@ func (t EpisodeType) IsValid() bool {
 func (t EpisodeType) ToModel() models.EpisodeType {
 	return models.EpisodeType(t)
 }
+
+// EpisodeStatus is the domain enum for episode lifecycle status.
+type EpisodeStatus string
+
+const (
+	EpisodeStatusPending    EpisodeStatus = "pending"
+	EpisodeStatusInProgress EpisodeStatus = "in_progress"
+	EpisodeStatusConverged  EpisodeStatus = "converged"
+	EpisodeStatusEscalated  EpisodeStatus = "escalated"
+	EpisodeStatusFailed     EpisodeStatus = "failed"
+)
+
+func (s EpisodeStatus) IsValid() bool {
+	switch s {
+	case EpisodeStatusPending, EpisodeStatusInProgress, EpisodeStatusConverged, EpisodeStatusEscalated, EpisodeStatusFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s EpisodeStatus) ToModel() models.EpisodeStatus {
+	return models.EpisodeStatus(s)
+}

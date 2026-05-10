@@ -47,6 +47,9 @@ Completed seeds:
 - `internal/domain/episode/*` and `internal/domain/execution/*` transitions/typing foundations.
 - First migration slice added: `internal/domain/episode/enums.go` with `EpisodeType` domain enum and model mapping.
 - Execution auto-create path now validates `metadata.episode_type` via domain enum before creating Episode records.
+- Second migration slice added: domain `EpisodeStatus` enum with model mapping; write paths now consume domain status mapping for pending/in_progress/converged transitions.
+- Follow-up hardening: domain `EpisodeStatus` mapping now also used for pending checks in episode writer and transition policy mapping in `internal/domain/episode/transitions.go`.
+- Projection alignment: workspace projector replay-percentage status buckets now use domain `EpisodeStatus` mappings instead of direct model constants.
 
 Remaining:
 
@@ -80,6 +83,17 @@ Per batch:
 Known pre-existing repo-wide issue:
 
 - `go test ./...` fails in `internal/api/docs` due to missing `github.com/swaggo/swag` module.
+
+Latest batch verification (EpisodeStatus migration follow-up):
+
+- Automated: `go test ./internal/domain/episode ./internal/application/execution ./internal/engine ./internal/projection/workspace ./internal/api`
+- Automated regression: `go test ./internal/api -run TestEpisodeLifecycle_AutoCreateAndConverge -count=10`
+- Manual API QA:
+  - `GET /health` returns `{"status":"ok",...}` on local `:18080`.
+  - `POST /api/v1/run` with `metadata.episode_type=action_verification` returns accepted execution.
+  - `GET /api/v1/executions/:id` reaches `status=completed`.
+  - `GET /api/v1/executions/:id/episodes` confirms episode `status=converged` with evidence and verdict.
+  - `GET /api/v1/executions/:id/episodes?view=summary` confirms `default_replay_percent=100` for converged status.
 
 ## Next Recommended Order
 

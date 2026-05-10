@@ -62,8 +62,8 @@ func (w *EpisodeWriter) AppendFact(
 	}
 	ep.Evidence = append(ep.Evidence, ev)
 	// Status lifecycle: pending → in_progress on first evidence write.
-	if ep.Status == models.EpisodeStatusPending {
-		ep.Status = models.EpisodeStatusInProgress
+	if ep.Status == domainEpisode.EpisodeStatusPending.ToModel() {
+		ep.Status = domainEpisode.EpisodeStatusInProgress.ToModel()
 	}
 	ep.UpdatedAt = time.Now().UTC()
 	if err := w.store.Update(ctx, ep); err != nil {
@@ -101,8 +101,8 @@ func (w *EpisodeWriter) AppendFactWithSpec(
 		CollectedAt:   time.Now().UTC(),
 	}
 	ep.Evidence = append(ep.Evidence, ev)
-	if ep.Status == models.EpisodeStatusPending {
-		ep.Status = models.EpisodeStatusInProgress
+	if ep.Status == domainEpisode.EpisodeStatusPending.ToModel() {
+		ep.Status = domainEpisode.EpisodeStatusInProgress.ToModel()
 	}
 	ep.UpdatedAt = time.Now().UTC()
 	if err := w.store.Update(ctx, ep); err != nil {
@@ -155,8 +155,8 @@ func (w *EpisodeWriter) AppendFactWithRef(
 	}
 	ep.Evidence = append(ep.Evidence, ev)
 	// Status lifecycle: pending → in_progress on first evidence write.
-	if ep.Status == models.EpisodeStatusPending {
-		ep.Status = models.EpisodeStatusInProgress
+	if ep.Status == domainEpisode.EpisodeStatusPending.ToModel() {
+		ep.Status = domainEpisode.EpisodeStatusInProgress.ToModel()
 	}
 	ep.UpdatedAt = time.Now().UTC()
 	if err := w.store.Update(ctx, ep); err != nil {
@@ -229,7 +229,7 @@ func (w *EpisodeWriter) WriteVerdict(
 	verdict.DecidedBy = nodeID
 	verdict.DecidedAt = now
 	ep.Verdict = &verdict
-	ep.Status = models.EpisodeStatusConverged
+	ep.Status = domainEpisode.EpisodeStatusConverged.ToModel()
 	ep.ConcludedAt = &now
 	ep.MemoryExtraction = computeMemoryExtraction(&verdict)
 	ep.UpdatedAt = now
@@ -374,8 +374,8 @@ func (w *EpisodeWriter) AppendProcessTraceEntry(
 		CollectedAt:   time.Now().UTC(),
 	}
 	ep.Evidence = append(ep.Evidence, ev)
-	if ep.Status == models.EpisodeStatusPending {
-		ep.Status = models.EpisodeStatusInProgress
+	if ep.Status == domainEpisode.EpisodeStatusPending.ToModel() {
+		ep.Status = domainEpisode.EpisodeStatusInProgress.ToModel()
 	}
 	ep.UpdatedAt = time.Now().UTC()
 	if err := w.store.Update(ctx, ep); err != nil {
