@@ -57,6 +57,8 @@ Completed seeds:
 - Domain verdict semantics slice: added domain `EpisodeResult` and `EpisodeConfidence` enums with model mapping; runtime verdict parse/extraction paths now use domain mappings.
 - Domain trigger/evidence semantics slice: added domain `EpisodeTriggerType` and `EpisodeEvidenceType` enums with model mapping; runtime create/write paths now consume domain mappings.
 - Domain handle semantics slice: added domain `EpisodeHandleType` with model mapping; runtime handle write path and related tests now consume domain mappings.
+- Domain human-action semantics slice: added domain `HumanInterventionAction` with mapping helpers; resume default action now uses domain mapping.
+- Transport boundary hardening slice: execution list pagination (`limit`/`offset`) and episode replay `percent` now enforce strict numeric validation; resume endpoint now returns `400` on invalid JSON body.
 
 Remaining:
 
@@ -125,6 +127,11 @@ Latest batch verification (handle semantics follow-up):
 
 - Automated: `go test ./internal/domain/episode ./internal/engine ./internal/store ./internal/api`
 - Stability: `go test ./internal/api -run TestEpisodeLifecycle_AutoCreateAndConverge -count=20`
+
+Latest batch verification (domain+boundary combined follow-up):
+
+- Automated: `go test ./internal/application/execution ./internal/api`
+- Focused: `go test ./internal/api -run "Test(ListExecutions_InvalidPaginationQuery|ResumeExecution_InvalidJSONBody|EpisodeReplay_InvalidPercentQuery)" -count=10`
 
 ## Next Recommended Order
 

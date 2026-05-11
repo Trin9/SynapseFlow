@@ -66,6 +66,8 @@ These are currently allowed while keeping business orchestration clean:
 - Domain verdict enum mapping (`EpisodeResult`/`EpisodeConfidence`) is now used in runtime verdict parse and memory-extraction decision paths.
 - Domain trigger/evidence enum mapping (`EpisodeTriggerType`/`EpisodeEvidenceType`) is now used in runtime episode creation and evidence-write paths.
 - Domain handle enum mapping (`EpisodeHandleType`) is now used in runtime handle-write path and aligned tests.
+- Domain human-action enum mapping (`HumanInterventionAction`) is now used for resume default action semantics.
+- API transport boundary validation strengthened for pagination (`limit`/`offset`), replay range (`percent`), and resume JSON payload parsing.
 
 ## Remaining Gaps (Current)
 

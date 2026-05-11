@@ -266,6 +266,47 @@ func TestNotFound_ErrorFormat(t *testing.T) {
 	}
 }
 
+func TestListExecutions_InvalidPaginationQuery(t *testing.T) {
+	s := NewServer()
+
+	rec := do(t, s, http.MethodGet, "/api/v1/executions?dag_id=dag-1&limit=abc", nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid limit, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(t, s, http.MethodGet, "/api/v1/executions?dag_id=dag-1&offset=-1", nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid offset, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestResumeExecution_InvalidJSONBody(t *testing.T) {
+	s := NewServer()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/executions/nonexistent/resume", bytes.NewBufferString("{"))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid JSON body, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestEpisodeReplay_InvalidPercentQuery(t *testing.T) {
+	s := NewServer()
+
+	rec := do(t, s, http.MethodGet, "/api/v1/executions/exec-1/episodes/ep-1/replay?percent=abc", nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for non-numeric percent, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(t, s, http.MethodGet, "/api/v1/executions/exec-1/episodes/ep-1/replay?percent=101", nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for out-of-range percent, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func do(t *testing.T, s *Server, method, path string, body []byte) *httptest.ResponseRecorder {
 	t.Helper()
 	var r *http.Request

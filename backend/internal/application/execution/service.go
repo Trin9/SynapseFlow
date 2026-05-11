@@ -278,7 +278,7 @@ func (s *Service) ResumeExecution(ctx context.Context, input ResumeInput) (*mode
 			}
 			action := input.Action
 			if action == "" {
-				action = models.HumanActionResumed
+				action = domainEpisode.HumanActionResumed.ToModel()
 			}
 			if err := s.EpisodeWriter.AppendHumanIntervention(
 				ctx, episodeID, "", actor, action, input.Detail,

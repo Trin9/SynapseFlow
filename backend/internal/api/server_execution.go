@@ -2,11 +2,12 @@ package api
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	appExecution "github.com/Trin9/SynapseFlow/backend/internal/application/execution"
+	domainEpisode "github.com/Trin9/SynapseFlow/backend/internal/domain/episode"
 	"github.com/Trin9/SynapseFlow/backend/pkg/logger"
 	"github.com/Trin9/SynapseFlow/backend/pkg/models"
 	"github.com/gin-gonic/gin"
@@ -114,8 +115,18 @@ func (s *Server) handleListExecutions(c *gin.Context) {
 		input.DAGID = dagID
 		limitStr := c.DefaultQuery("limit", "0")
 		offsetStr := c.DefaultQuery("offset", "0")
-		fmt.Sscanf(limitStr, "%d", &input.Limit)
-		fmt.Sscanf(offsetStr, "%d", &input.Offset)
+		limit, err := strconv.Atoi(limitStr)
+		if err != nil || limit < 0 {
+			writeError(c, http.StatusBadRequest, "invalid_request", "invalid limit", limitStr)
+			return
+		}
+		offset, err := strconv.Atoi(offsetStr)
+		if err != nil || offset < 0 {
+			writeError(c, http.StatusBadRequest, "invalid_request", "invalid offset", offsetStr)
+			return
+		}
+		input.Limit = limit
+		input.Offset = offset
 	}
 	if statusStr := c.Query("status"); statusStr != "" {
 		status := models.ExecutionStatus(statusStr)
@@ -193,8 +204,13 @@ func (s *Server) handleResumeExecution(c *gin.Context) {
 	id := c.Param("id")
 
 	var resumeBody resumeExecutionRequest
-	_ = c.ShouldBindJSON(&resumeBody)
-	action := models.HumanInterventionAction(resumeBody.Action)
+	if c.Request.ContentLength > 0 {
+		if err := c.ShouldBindJSON(&resumeBody); err != nil {
+			writeError(c, http.StatusBadRequest, "invalid_request", "invalid request body", err.Error())
+			return
+		}
+	}
+	action := domainEpisode.HumanInterventionAction(resumeBody.Action)
 	if action != "" && !action.IsResumeAction() {
 		writeError(c, http.StatusBadRequest, "invalid_request", "invalid resume action", resumeBody.Action)
 		return
@@ -203,7 +219,7 @@ func (s *Server) handleResumeExecution(c *gin.Context) {
 	exec, err := s.execService.ResumeExecution(c.Request.Context(), appExecution.ResumeInput{
 		ExecutionID: id,
 		Actor:       resumeBody.Actor,
-		Action:      action,
+		Action:      action.ToModel(),
 		Detail:      resumeBody.Detail,
 	})
 	if err != nil {

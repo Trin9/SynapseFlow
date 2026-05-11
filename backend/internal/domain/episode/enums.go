@@ -171,3 +171,44 @@ func (t EpisodeHandleType) IsValid() bool {
 func (t EpisodeHandleType) ToModel() models.EpisodeHandleType {
 	return models.EpisodeHandleType(t)
 }
+
+// HumanInterventionAction is the domain enum for human intervention actions.
+type HumanInterventionAction string
+
+const (
+	HumanActionStateOverride         HumanInterventionAction = "state_override"
+	HumanActionEvidenceMarkedInvalid HumanInterventionAction = "evidence_marked_invalid"
+	HumanActionHandleInjected        HumanInterventionAction = "handle_injected"
+	HumanActionHypothesisCorrected   HumanInterventionAction = "hypothesis_corrected"
+	HumanActionSuspended             HumanInterventionAction = "review_requested"
+	HumanActionResumed               HumanInterventionAction = "resumed"
+	HumanActionAborted               HumanInterventionAction = "aborted"
+)
+
+func (a HumanInterventionAction) IsValid() bool {
+	switch a {
+	case HumanActionStateOverride,
+		HumanActionEvidenceMarkedInvalid,
+		HumanActionHandleInjected,
+		HumanActionHypothesisCorrected,
+		HumanActionSuspended,
+		HumanActionResumed,
+		HumanActionAborted:
+		return true
+	default:
+		return false
+	}
+}
+
+func (a HumanInterventionAction) IsResumeAction() bool {
+	switch a {
+	case HumanActionResumed, HumanActionAborted, HumanActionStateOverride:
+		return true
+	default:
+		return false
+	}
+}
+
+func (a HumanInterventionAction) ToModel() models.HumanInterventionAction {
+	return models.HumanInterventionAction(a)
+}

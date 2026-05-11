@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -219,8 +220,12 @@ func (s *Server) handlePostReviewAction(c *gin.Context) {
 // @Router /api/v1/executions/{id}/episodes/{episode_id}/replay [get]
 func (s *Server) handleGetEpisodeReplay(c *gin.Context) {
 	episodeID := c.Param("episode_id")
-	percent := 100
-	fmt.Sscanf(c.DefaultQuery("percent", "100"), "%d", &percent)
+	percentStr := c.DefaultQuery("percent", "100")
+	percent, err := strconv.Atoi(percentStr)
+	if err != nil || percent < 0 || percent > 100 {
+		writeError(c, http.StatusBadRequest, "invalid_request", "invalid replay percent", percentStr)
+		return
+	}
 	view, err := s.workspaceSvc.GetEpisodeReplay(c.Request.Context(), episodeID, percent)
 	if err != nil {
 		if errors.Is(err, appWorkspace.ErrEpisodeNotFound) {
