@@ -15,10 +15,10 @@ import (
 
 // Service orchestrates workspace read use-cases.
 type Service struct {
-	Executions    store.ExecutionStore
-	Episodes      store.EpisodeStore
-	MemoryStore   memory.ExperienceStore
-	EpisodeWriter interface {
+	ExecutionStore store.ExecutionStore
+	EpisodeStore   store.EpisodeStore
+	ExperienceStore memory.ExperienceStore
+	ReviewWriter   interface {
 		WriteReviewState(ctx context.Context, execID string, req domainEpisode.ReviewActionInput) error
 	}
 
@@ -49,7 +49,7 @@ var (
 
 // ListEpisodes returns all episodes for one execution.
 func (s *Service) ListEpisodes(ctx context.Context, executionID string) ([]*models.Episode, error) {
-	episodes, err := s.Episodes.ListByExecution(ctx, executionID)
+	episodes, err := s.EpisodeStore.ListByExecution(ctx, executionID)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrEpisodeList, err)
 	}
@@ -61,7 +61,7 @@ func (s *Service) ListEpisodes(ctx context.Context, executionID string) ([]*mode
 
 // ListEpisodeSummaries returns projected episode summaries for one execution.
 func (s *Service) ListEpisodeSummaries(ctx context.Context, executionID string) ([]workspaceView.EpisodeSummaryView, error) {
-	episodes, err := s.Episodes.ListByExecution(ctx, executionID)
+	episodes, err := s.EpisodeStore.ListByExecution(ctx, executionID)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrEpisodeList, err)
 	}
@@ -74,7 +74,7 @@ func (s *Service) ListEpisodeSummaries(ctx context.Context, executionID string) 
 
 // GetEpisode returns one episode by ID.
 func (s *Service) GetEpisode(ctx context.Context, episodeID string) (*models.Episode, error) {
-	ep, err := s.Episodes.Get(ctx, episodeID)
+	ep, err := s.EpisodeStore.Get(ctx, episodeID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, ErrEpisodeNotFound
 	}
@@ -86,7 +86,7 @@ func (s *Service) GetEpisode(ctx context.Context, episodeID string) (*models.Epi
 
 // GetExecutionSummary returns summary projection for one execution.
 func (s *Service) GetExecutionSummary(ctx context.Context, executionID string) (*workspaceView.ExecutionSummaryView, error) {
-	summary, err := s.Executions.GetExecutionSummary(ctx, executionID)
+	summary, err := s.ExecutionStore.GetExecutionSummary(ctx, executionID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, ErrExecutionNotFound
 	}
@@ -98,14 +98,14 @@ func (s *Service) GetExecutionSummary(ctx context.Context, executionID string) (
 
 // GetTriggerContext returns trigger context projection for one execution.
 func (s *Service) GetTriggerContext(ctx context.Context, executionID string) (workspaceView.TriggerContextView, error) {
-	exec, err := s.Executions.Get(ctx, executionID)
+	exec, err := s.ExecutionStore.Get(ctx, executionID)
 	if errors.Is(err, store.ErrNotFound) {
 		return workspaceView.TriggerContextView{}, ErrExecutionNotFound
 	}
 	if err != nil {
 		return workspaceView.TriggerContextView{}, fmt.Errorf("%w: %v", ErrExecutionGet, err)
 	}
-	episodes, err := s.Episodes.ListByExecution(ctx, executionID)
+	episodes, err := s.EpisodeStore.ListByExecution(ctx, executionID)
 	if err != nil {
 		return workspaceView.TriggerContextView{}, fmt.Errorf("%w: %v", ErrEpisodeList, err)
 	}
@@ -117,7 +117,7 @@ func (s *Service) GetTriggerContext(ctx context.Context, executionID string) (wo
 
 // GetReviewState returns aggregate review-state projection for one execution.
 func (s *Service) GetReviewState(ctx context.Context, executionID string) (*workspaceView.ReviewStateView, error) {
-	episodes, err := s.Episodes.ListByExecution(ctx, executionID)
+	episodes, err := s.EpisodeStore.ListByExecution(ctx, executionID)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrReviewStateGet, err)
 	}
@@ -126,14 +126,14 @@ func (s *Service) GetReviewState(ctx context.Context, executionID string) (*work
 
 // PostReviewAction writes a review action for one execution.
 func (s *Service) PostReviewAction(ctx context.Context, executionID, episodeID, status, actor, note string) error {
-	if s.EpisodeWriter == nil {
+	if s.ReviewWriter == nil {
 		return fmt.Errorf("%w: episode writer unavailable", ErrReviewActionWrite)
 	}
 	reviewStatus := domainEpisode.ReviewStatus(status)
 	if !reviewStatus.IsValid() {
 		return ErrInvalidReviewState
 	}
-	if err := s.EpisodeWriter.WriteReviewState(ctx, executionID, domainEpisode.ReviewActionInput{
+	if err := s.ReviewWriter.WriteReviewState(ctx, executionID, domainEpisode.ReviewActionInput{
 		EpisodeID: episodeID,
 		Status:    reviewStatus,
 		Actor:     actor,
@@ -155,7 +155,7 @@ func (s *Service) GetEpisodeReplay(ctx context.Context, episodeID string, percen
 	if percent > 100 {
 		percent = 100
 	}
-	ep, err := s.Episodes.Get(ctx, episodeID)
+	ep, err := s.EpisodeStore.Get(ctx, episodeID)
 	if errors.Is(err, store.ErrNotFound) {
 		return workspaceView.ReplaySliceView{}, ErrEpisodeNotFound
 	}
@@ -171,14 +171,14 @@ func (s *Service) GetEpisodeReplay(ctx context.Context, episodeID string, percen
 
 // GetComparisonTarget compares current and historical executions.
 func (s *Service) GetComparisonTarget(ctx context.Context, executionID, historicalID string) (ComparisonSummaryView, error) {
-	current, err := s.Executions.Get(ctx, executionID)
+	current, err := s.ExecutionStore.Get(ctx, executionID)
 	if errors.Is(err, store.ErrNotFound) {
 		return ComparisonSummaryView{}, ErrExecutionNotFound
 	}
 	if err != nil {
 		return ComparisonSummaryView{}, fmt.Errorf("%w: %v", ErrComparisonBuild, err)
 	}
-	historical, err := s.Executions.Get(ctx, historicalID)
+	historical, err := s.ExecutionStore.Get(ctx, historicalID)
 	if errors.Is(err, store.ErrNotFound) {
 		return ComparisonSummaryView{}, ErrHistoricalNotFound
 	}
@@ -193,7 +193,7 @@ func (s *Service) GetComparisonTarget(ctx context.Context, executionID, historic
 
 // GetEpisodeDossier returns dossier view for one episode.
 func (s *Service) GetEpisodeDossier(ctx context.Context, episodeID string) (workspaceView.EpisodeDossierView, error) {
-	ep, err := s.Episodes.Get(ctx, episodeID)
+	ep, err := s.EpisodeStore.Get(ctx, episodeID)
 	if errors.Is(err, store.ErrNotFound) {
 		return workspaceView.EpisodeDossierView{}, ErrEpisodeNotFound
 	}
@@ -203,7 +203,7 @@ func (s *Service) GetEpisodeDossier(ctx context.Context, episodeID string) (work
 	facts := projectionWorkspace.EpisodeToRuntimeFacts(ep)
 	recalls := []workspaceView.MemoryRecallView{}
 	if s.BuildMemoryRecalls != nil {
-		r, recallErr := s.BuildMemoryRecalls(ctx, ep, s.MemoryStore)
+		r, recallErr := s.BuildMemoryRecalls(ctx, ep, s.ExperienceStore)
 		if recallErr != nil {
 			if s.LogMemoryRecallWarning != nil {
 				s.LogMemoryRecallWarning(episodeID, recallErr)
@@ -220,7 +220,7 @@ func (s *Service) GetEpisodeDossier(ctx context.Context, episodeID string) (work
 
 // GetEpisodeMemoryRecalls returns recall list for one episode.
 func (s *Service) GetEpisodeMemoryRecalls(ctx context.Context, episodeID string) (workspaceView.MemoryRecallListView, error) {
-	ep, err := s.Episodes.Get(ctx, episodeID)
+	ep, err := s.EpisodeStore.Get(ctx, episodeID)
 	if errors.Is(err, store.ErrNotFound) {
 		return workspaceView.MemoryRecallListView{}, ErrEpisodeNotFound
 	}
@@ -230,7 +230,7 @@ func (s *Service) GetEpisodeMemoryRecalls(ctx context.Context, episodeID string)
 	if s.BuildMemoryRecalls == nil {
 		return workspaceView.MemoryRecallListView{}, fmt.Errorf("%w: memory recall builder unavailable", ErrMemoryRecallSearch)
 	}
-	recalls, err := s.BuildMemoryRecalls(ctx, ep, s.MemoryStore)
+	recalls, err := s.BuildMemoryRecalls(ctx, ep, s.ExperienceStore)
 	if err != nil {
 		return workspaceView.MemoryRecallListView{}, fmt.Errorf("%w: %v", ErrMemoryRecallSearch, err)
 	}

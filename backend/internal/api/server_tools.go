@@ -12,7 +12,7 @@ import (
 // @Tags Tools
 // @Produce json
 // @Success 200 {array} object "MCP tool list"
-// @Failure 500 {object} apiError
+// @Failure 500 {object} dto.APIError
 // @Router /api/v1/tools [get]
 func (s *Server) handleListTools(c *gin.Context) {
 	tools, err := s.mcpMgr.ListTools(c.Request.Context())

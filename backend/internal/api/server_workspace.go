@@ -30,8 +30,8 @@ import (
 // @Produce json
 // @Param id path string true "Execution ID"
 // @Param view query string false "Set to summary for summary view"
-// @Success 200 {object} episodesResponse
-// @Failure 500 {object} apiError
+// @Success 200 {object} dto.EpisodesResponse
+// @Failure 500 {object} dto.APIError
 // @Router /api/v1/executions/{id}/episodes [get]
 func (s *Server) handleListEpisodes(c *gin.Context) {
 	execID := c.Param("id")
@@ -42,7 +42,7 @@ func (s *Server) handleListEpisodes(c *gin.Context) {
 			writeError(c, http.StatusInternalServerError, "episode_list_error", "failed to list episode summaries", err.Error())
 			return
 		}
-		c.JSON(http.StatusOK, episodeSummariesResponse{Episodes: summaries})
+		c.JSON(http.StatusOK, dto.EpisodeSummariesResponse{Episodes: summaries})
 		return
 	}
 	episodes, err := s.workspaceSvc.ListEpisodes(ctx, execID)
@@ -50,7 +50,7 @@ func (s *Server) handleListEpisodes(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, "episode_list_error", "failed to list episodes", err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, episodesResponse{Episodes: episodes})
+	c.JSON(http.StatusOK, dto.EpisodesResponse{Episodes: episodes})
 }
 
 // handleGetEpisode returns a single episode by ID.
@@ -63,8 +63,8 @@ func (s *Server) handleListEpisodes(c *gin.Context) {
 // @Produce json
 // @Param id path string true "Episode ID"
 // @Success 200 {object} object "Episode"
-// @Failure 404 {object} apiError
-// @Failure 500 {object} apiError
+// @Failure 404 {object} dto.APIError
+// @Failure 500 {object} dto.APIError
 // @Router /api/v1/episodes/{id} [get]
 func (s *Server) handleGetEpisode(c *gin.Context) {
 	id := c.Param("id")
@@ -90,8 +90,8 @@ func (s *Server) handleGetEpisode(c *gin.Context) {
 // @Produce json
 // @Param id path string true "Execution ID"
 // @Success 200 {object} object "Execution summary"
-// @Failure 404 {object} apiError
-// @Failure 500 {object} apiError
+// @Failure 404 {object} dto.APIError
+// @Failure 500 {object} dto.APIError
 // @Router /api/v1/executions/{id}/summary [get]
 func (s *Server) handleGetExecutionSummary(c *gin.Context) {
 	id := c.Param("id")
@@ -118,8 +118,8 @@ func (s *Server) handleGetExecutionSummary(c *gin.Context) {
 // @Produce json
 // @Param id path string true "Execution ID"
 // @Success 200 {object} object "Trigger context"
-// @Failure 404 {object} apiError
-// @Failure 500 {object} apiError
+// @Failure 404 {object} dto.APIError
+// @Failure 500 {object} dto.APIError
 // @Router /api/v1/executions/{id}/trigger-context [get]
 func (s *Server) handleGetTriggerContext(c *gin.Context) {
 	execID := c.Param("id")
@@ -153,7 +153,7 @@ func (s *Server) handleGetTriggerContext(c *gin.Context) {
 // @Produce json
 // @Param id path string true "Execution ID"
 // @Success 200 {object} object "Review state"
-// @Failure 500 {object} apiError
+// @Failure 500 {object} dto.APIError
 // @Router /api/v1/executions/{id}/review-state [get]
 func (s *Server) handleGetReviewState(c *gin.Context) {
 	execID := c.Param("id")
@@ -176,10 +176,10 @@ func (s *Server) handleGetReviewState(c *gin.Context) {
 // @Produce json
 // @Param id path string true "Execution ID"
 // @Param request body object true "Review action request"
-// @Success 200 {object} reviewActionResponse
-// @Failure 400 {object} apiError
-// @Failure 404 {object} apiError
-// @Failure 500 {object} apiError
+// @Success 200 {object} dto.ReviewActionResponse
+// @Failure 400 {object} dto.APIError
+// @Failure 404 {object} dto.APIError
+// @Failure 500 {object} dto.APIError
 // @Router /api/v1/executions/{id}/review-actions [post]
 func (s *Server) handlePostReviewAction(c *gin.Context) {
 	execID := c.Param("id")
@@ -200,7 +200,7 @@ func (s *Server) handlePostReviewAction(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, "review_action_error", "failed to write review state", err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, reviewActionResponse{OK: true})
+	c.JSON(http.StatusOK, dto.ReviewActionResponse{OK: true})
 }
 
 // handleGetEpisodeReplay returns a replay slice view for a single episode.
@@ -215,8 +215,8 @@ func (s *Server) handlePostReviewAction(c *gin.Context) {
 // @Param episode_id path string true "Episode ID"
 // @Param percent query int false "Replay percentage (0-100)"
 // @Success 200 {object} object "Replay slice view"
-// @Failure 404 {object} apiError
-// @Failure 500 {object} apiError
+// @Failure 404 {object} dto.APIError
+// @Failure 500 {object} dto.APIError
 // @Router /api/v1/executions/{id}/episodes/{episode_id}/replay [get]
 func (s *Server) handleGetEpisodeReplay(c *gin.Context) {
 	episodeID := c.Param("episode_id")
@@ -249,8 +249,8 @@ func (s *Server) handleGetEpisodeReplay(c *gin.Context) {
 // @Param id path string true "Execution ID"
 // @Param episode_id path string true "Episode ID"
 // @Success 200 {object} object "Episode dossier"
-// @Failure 404 {object} apiError
-// @Failure 500 {object} apiError
+// @Failure 404 {object} dto.APIError
+// @Failure 500 {object} dto.APIError
 // @Router /api/v1/executions/{id}/episodes/{episode_id}/dossier [get]
 func (s *Server) handleGetEpisodeDossier(c *gin.Context) {
 	episodeID := c.Param("episode_id")
@@ -279,8 +279,8 @@ func (s *Server) handleGetEpisodeDossier(c *gin.Context) {
 // @Param id path string true "Execution ID"
 // @Param episode_id path string true "Episode ID"
 // @Success 200 {object} object "Memory recall list"
-// @Failure 404 {object} apiError
-// @Failure 500 {object} apiError
+// @Failure 404 {object} dto.APIError
+// @Failure 500 {object} dto.APIError
 // @Router /api/v1/executions/{id}/episodes/{episode_id}/memory-recalls [get]
 func (s *Server) handleGetEpisodeMemoryRecalls(c *gin.Context) {
 	episodeID := c.Param("episode_id")
@@ -395,8 +395,8 @@ func buildMemoryRecallsForEpisode(ctx context.Context, ep *models.Episode, expSt
 // @Param id path string true "Current execution ID"
 // @Param historical_id path string true "Historical execution ID"
 // @Success 200 {object} object "Comparison summary"
-// @Failure 404 {object} apiError
-// @Failure 500 {object} apiError
+// @Failure 404 {object} dto.APIError
+// @Failure 500 {object} dto.APIError
 // @Router /api/v1/executions/{id}/comparison-targets/{historical_id} [get]
 func (s *Server) handleGetComparisonTarget(c *gin.Context) {
 	execID := c.Param("id")

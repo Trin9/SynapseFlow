@@ -210,10 +210,10 @@ func NewServer(opts ...ServerOption) *Server {
 		s.systemSvc.DB = s.db
 	}
 	s.workspaceSvc = &appWorkspace.Service{
-		Executions:              s.execs,
-		Episodes:                s.episodes,
-		MemoryStore:             s.memory,
-		EpisodeWriter:           s.episodeWriter,
+		ExecutionStore:          s.execs,
+		EpisodeStore:            s.episodes,
+		ExperienceStore:         s.memory,
+		ReviewWriter:            s.episodeWriter,
 		BuildTriggerContextView: buildTriggerContextView,
 		BuildReplaySliceView:    buildReplaySliceView,
 		BuildComparisonSummary:  buildComparisonSummary,

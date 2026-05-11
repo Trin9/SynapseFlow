@@ -59,6 +59,8 @@ Completed seeds:
 - Domain handle semantics slice: added domain `EpisodeHandleType` with model mapping; runtime handle write path and related tests now consume domain mappings.
 - Domain human-action semantics slice: added domain `HumanInterventionAction` with mapping helpers; resume default action now uses domain mapping.
 - Transport boundary hardening slice: execution list pagination (`limit`/`offset`) and episode replay `percent` now enforce strict numeric validation; resume endpoint now returns `400` on invalid JSON body.
+- Readability slice: workspace application service dependency fields renamed for intent clarity (`ExecutionStore`/`EpisodeStore`/`ExperienceStore`/`ReviewWriter`).
+- API DTO consolidation slice: moved server-level HTTP DTOs from `internal/api/server.go` into `internal/api/dto/http_types.go` and updated handler/swagger references.
 
 Remaining:
 
@@ -132,6 +134,12 @@ Latest batch verification (domain+boundary combined follow-up):
 
 - Automated: `go test ./internal/application/execution ./internal/api`
 - Focused: `go test ./internal/api -run "Test(ListExecutions_InvalidPaginationQuery|ResumeExecution_InvalidJSONBody|EpisodeReplay_InvalidPercentQuery)" -count=10`
+
+Latest batch verification (naming + DTO consolidation follow-up):
+
+- Automated: `go test ./internal/application/workspace ./internal/api`
+- Swagger regeneration: `make apidoc` (definitions now reference `dto.*` types)
+- Focused regression: `go test ./internal/api -run "Test(ListExecutions_InvalidPaginationQuery|ResumeExecution_InvalidJSONBody|EpisodeReplay_InvalidPercentQuery|DAG_CRUD_And_Run|EpisodeLifecycle_AutoCreateAndConverge)" -count=10`
 
 ## Next Recommended Order
 

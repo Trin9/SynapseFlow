@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Trin9/SynapseFlow/backend/internal/api/dto"
 	appExecution "github.com/Trin9/SynapseFlow/backend/internal/application/execution"
 	domainEpisode "github.com/Trin9/SynapseFlow/backend/internal/domain/episode"
 	"github.com/Trin9/SynapseFlow/backend/pkg/logger"
@@ -20,9 +21,9 @@ import (
 // @Accept json
 // @Produce json
 // @Param request body object true "DAG configuration"
-// @Success 202 {object} runExecutionResponse
-// @Failure 400 {object} apiError
-// @Failure 500 {object} apiError
+// @Success 202 {object} dto.RunExecutionResponse
+// @Failure 400 {object} dto.APIError
+// @Failure 500 {object} dto.APIError
 // @Router /api/v1/run [post]
 func (s *Server) handleRunInline(c *gin.Context) {
 	dag, ok := getValidatedDAG(c)
@@ -47,7 +48,7 @@ func (s *Server) runWorkflow(c *gin.Context, dag *models.DAGConfig) {
 		writeError(c, http.StatusBadRequest, "invalid_dag", "invalid DAG", err.Error())
 		return
 	}
-	c.JSON(http.StatusAccepted, runExecutionResponse{
+	c.JSON(http.StatusAccepted, dto.RunExecutionResponse{
 		ExecutionID: exec.ID,
 		Status:      exec.Status,
 	})
@@ -75,8 +76,8 @@ func (s *Server) startExecution(dag *models.DAGConfig, initialState *models.Glob
 // @Produce json
 // @Param id path string true "Execution ID"
 // @Success 200 {object} object "Execution"
-// @Failure 404 {object} apiError
-// @Failure 500 {object} apiError
+// @Failure 404 {object} dto.APIError
+// @Failure 500 {object} dto.APIError
 // @Router /api/v1/executions/{id} [get]
 func (s *Server) handleGetExecution(c *gin.Context) {
 	id := c.Param("id")
@@ -104,7 +105,7 @@ func (s *Server) handleGetExecution(c *gin.Context) {
 // @Param limit query int false "Pagination limit (for dag_id filter)"
 // @Param offset query int false "Pagination offset (for dag_id filter)"
 // @Success 200 {array} object "Execution list"
-// @Failure 500 {object} apiError
+// @Failure 500 {object} dto.APIError
 // @Router /api/v1/executions [get]
 func (s *Server) handleListExecutions(c *gin.Context) {
 	ctx := c.Request.Context()
@@ -155,8 +156,8 @@ func (s *Server) handleListExecutions(c *gin.Context) {
 // @Produce json
 // @Param id path string true "Execution ID"
 // @Success 200 {object} object "Execution node results"
-// @Failure 404 {object} apiError
-// @Failure 500 {object} apiError
+// @Failure 404 {object} dto.APIError
+// @Failure 500 {object} dto.APIError
 // @Router /api/v1/executions/{id}/nodes [get]
 func (s *Server) handleGetExecutionNodes(c *gin.Context) {
 	id := c.Param("id")
@@ -175,7 +176,7 @@ func (s *Server) handleGetExecutionNodes(c *gin.Context) {
 		results = make([]models.NodeResult, 0)
 	}
 
-	c.JSON(http.StatusOK, executionNodesResponse{
+	c.JSON(http.StatusOK, dto.ExecutionNodesResponse{
 		ExecutionID: exec.ID,
 		Status:      exec.Status,
 		Results:     results,
@@ -193,17 +194,17 @@ func (s *Server) handleGetExecutionNodes(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param id path string true "Execution ID"
-// @Param request body resumeExecutionRequest false "Optional human intervention context"
-// @Success 202 {object} runExecutionResponse
-// @Failure 404 {object} apiError
-// @Failure 409 {object} apiError
-// @Failure 422 {object} apiError
-// @Failure 500 {object} apiError
+// @Param request body dto.ResumeExecutionRequest false "Optional human intervention context"
+// @Success 202 {object} dto.RunExecutionResponse
+// @Failure 404 {object} dto.APIError
+// @Failure 409 {object} dto.APIError
+// @Failure 422 {object} dto.APIError
+// @Failure 500 {object} dto.APIError
 // @Router /api/v1/executions/{id}/resume [post]
 func (s *Server) handleResumeExecution(c *gin.Context) {
 	id := c.Param("id")
 
-	var resumeBody resumeExecutionRequest
+	var resumeBody dto.ResumeExecutionRequest
 	if c.Request.ContentLength > 0 {
 		if err := c.ShouldBindJSON(&resumeBody); err != nil {
 			writeError(c, http.StatusBadRequest, "invalid_request", "invalid request body", err.Error())
@@ -249,7 +250,7 @@ func (s *Server) handleResumeExecution(c *gin.Context) {
 			return
 		}
 	}
-	c.JSON(http.StatusAccepted, runExecutionResponse{
+	c.JSON(http.StatusAccepted, dto.RunExecutionResponse{
 		ExecutionID: exec.ID,
 		Status:      exec.Status,
 	})

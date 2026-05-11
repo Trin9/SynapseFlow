@@ -1,5 +1,5 @@
 definitions:
-  api.apiError:
+  dto.APIError:
     properties:
       code:
         type: string
@@ -7,101 +7,79 @@ definitions:
       error:
         type: string
     type: object
-  api.deleteDAGResponse:
+  dto.DeleteDAGResponse:
     properties:
       message:
-        description: Deletion result message.
         type: string
     type: object
-  api.episodesResponse:
+  dto.EpisodesResponse:
     properties:
       episodes:
-        description: Episode items.
         items:
           $ref: '#/definitions/models.Episode'
         type: array
     type: object
-  api.healthDepsResponse:
+  dto.HealthDepsResponse:
     properties:
       db:
-        description: Database health status.
         type: string
       mcp:
-        description: MCP manager health status.
         type: string
     type: object
-  api.healthResponse:
+  dto.HealthResponse:
     properties:
       deps:
-        allOf:
-        - $ref: '#/definitions/api.healthDepsResponse'
-        description: Dependency health statuses.
+        $ref: '#/definitions/dto.HealthDepsResponse'
       service:
-        description: Service name.
         type: string
       status:
-        description: Overall service status.
         type: string
       version:
-        description: Service version.
         type: string
     type: object
-  api.issueTokenRequest:
+  dto.IssueTokenRequest:
     properties:
       api_key:
-        description: API key used to exchange for JWT; required.
         type: string
     required:
     - api_key
     type: object
-  api.issueTokenResponse:
+  dto.IssueTokenResponse:
     properties:
       expires_in:
-        description: Token TTL in seconds.
         type: integer
       role:
-        description: Role associated with the API key identity.
         type: string
       subject:
-        description: Subject associated with the API key identity.
         type: string
       token:
-        description: Signed JWT token.
         type: string
     type: object
-  api.liveResponse:
+  dto.LiveResponse:
     properties:
       status:
-        description: Process liveness status.
         type: string
     type: object
-  api.resumeExecutionRequest:
+  dto.ResumeExecutionRequest:
     properties:
       action:
-        description: Human intervention action; defaults to "resumed".
         type: string
       actor:
-        description: Human actor who resumes execution; defaults to "operator".
         type: string
       detail:
-        description: Optional detail for the resume operation.
         type: string
     type: object
-  api.reviewActionResponse:
+  dto.ReviewActionResponse:
     properties:
       ok:
-        description: Whether the review action was recorded successfully.
         type: boolean
     type: object
-  api.runExecutionResponse:
+  dto.RunExecutionResponse:
     properties:
       execution_id:
-        description: Execution identifier.
         type: string
       status:
-        allOf:
-        - $ref: '#/definitions/models.ExecutionStatus'
-        description: Current execution status.
+        $ref: '#/definitions/models.ExecutionStatus'
     type: object
   models.ActionContext:
     properties:
@@ -571,7 +549,7 @@ paths:
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
       summary: List Audit Entries
       tags:
       - Audit
@@ -586,30 +564,30 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/api.issueTokenRequest'
+          $ref: '#/definitions/dto.IssueTokenRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/api.issueTokenResponse'
+            $ref: '#/definitions/dto.IssueTokenResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
         "501":
           description: Not Implemented
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
       summary: Issue Token
       tags:
       - Auth
@@ -628,7 +606,7 @@ paths:
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
       summary: List DAGs
       tags:
       - DAG
@@ -653,11 +631,11 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
       summary: Create DAG
       tags:
       - DAG
@@ -676,15 +654,15 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/api.deleteDAGResponse'
+            $ref: '#/definitions/dto.DeleteDAGResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
       summary: Delete DAG
       tags:
       - DAG
@@ -706,11 +684,11 @@ paths:
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
       summary: Get DAG
       tags:
       - DAG
@@ -740,15 +718,15 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
       summary: Update DAG
       tags:
       - DAG
@@ -767,15 +745,15 @@ paths:
         "202":
           description: Accepted
           schema:
-            $ref: '#/definitions/api.runExecutionResponse'
+            $ref: '#/definitions/dto.RunExecutionResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
       summary: Run DAG
       tags:
       - Execution
@@ -798,11 +776,11 @@ paths:
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
       summary: Get Episode
       tags:
       - Episodes
@@ -842,7 +820,7 @@ paths:
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
       summary: List Executions
       tags:
       - Execution
@@ -865,11 +843,11 @@ paths:
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
       summary: Get Execution
       tags:
       - Execution
@@ -897,11 +875,11 @@ paths:
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
       summary: Get Comparison Target
       tags:
       - Workspace
@@ -924,11 +902,11 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/api.episodesResponse'
+            $ref: '#/definitions/dto.EpisodesResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
       summary: List Episodes
       tags:
       - Episodes
@@ -956,11 +934,11 @@ paths:
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
       summary: Get Episode Dossier
       tags:
       - Workspace
@@ -988,11 +966,11 @@ paths:
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
       summary: Get Episode Memory Recalls
       tags:
       - Workspace
@@ -1024,11 +1002,11 @@ paths:
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
       summary: Get Episode Replay
       tags:
       - Workspace
@@ -1051,11 +1029,11 @@ paths:
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
       summary: Get Execution Nodes
       tags:
       - Execution
@@ -1074,30 +1052,30 @@ paths:
         in: body
         name: request
         schema:
-          $ref: '#/definitions/api.resumeExecutionRequest'
+          $ref: '#/definitions/dto.ResumeExecutionRequest'
       produces:
       - application/json
       responses:
         "202":
           description: Accepted
           schema:
-            $ref: '#/definitions/api.runExecutionResponse'
+            $ref: '#/definitions/dto.RunExecutionResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
         "422":
           description: Unprocessable Entity
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
       summary: Resume Execution
       tags:
       - Execution
@@ -1124,19 +1102,19 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/api.reviewActionResponse'
+            $ref: '#/definitions/dto.ReviewActionResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
       summary: Post Review Action
       tags:
       - Workspace
@@ -1159,7 +1137,7 @@ paths:
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
       summary: Get Review State
       tags:
       - Workspace
@@ -1182,11 +1160,11 @@ paths:
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
       summary: Get Execution Summary
       tags:
       - Workspace
@@ -1209,11 +1187,11 @@ paths:
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
       summary: Get Trigger Context
       tags:
       - Workspace
@@ -1232,7 +1210,7 @@ paths:
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
       summary: List Experiences
       tags:
       - Memory
@@ -1254,15 +1232,15 @@ paths:
         "202":
           description: Accepted
           schema:
-            $ref: '#/definitions/api.runExecutionResponse'
+            $ref: '#/definitions/dto.RunExecutionResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
       summary: Run Inline DAG
       tags:
       - Execution
@@ -1281,7 +1259,7 @@ paths:
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/api.apiError'
+            $ref: '#/definitions/dto.APIError'
       summary: List Tools
       tags:
       - Tools
@@ -1294,7 +1272,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/api.healthResponse'
+            $ref: '#/definitions/dto.HealthResponse'
       summary: Health Check
       tags:
       - System
@@ -1307,7 +1285,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/api.liveResponse'
+            $ref: '#/definitions/dto.LiveResponse'
       summary: Live Check
       tags:
       - System

@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Trin9/SynapseFlow/backend/internal/api/dto"
 	"github.com/Trin9/SynapseFlow/backend/internal/auth"
 	"github.com/gin-gonic/gin"
 )
@@ -13,7 +14,7 @@ import (
 // @Description Returns service and dependency health status.
 // @Tags System
 // @Produce json
-// @Success 200 {object} healthResponse
+// @Success 200 {object} dto.HealthResponse
 // @Router /health [get]
 func (s *Server) handleHealth(c *gin.Context) {
 	mcpStatus := "unknown"
@@ -23,11 +24,11 @@ func (s *Server) handleHealth(c *gin.Context) {
 		mcpStatus = status.MCP
 		dbStatus = status.DB
 	}
-	c.JSON(http.StatusOK, healthResponse{
+	c.JSON(http.StatusOK, dto.HealthResponse{
 		Status:  "ok",
 		Service: "synapse",
 		Version: "0.1.0",
-		Deps: healthDepsResponse{
+		Deps: dto.HealthDepsResponse{
 			MCP: mcpStatus,
 			DB:  dbStatus,
 		},
@@ -40,10 +41,10 @@ func (s *Server) handleHealth(c *gin.Context) {
 // @Description Returns process liveness status.
 // @Tags System
 // @Produce json
-// @Success 200 {object} liveResponse
+// @Success 200 {object} dto.LiveResponse
 // @Router /health/live [get]
 func (s *Server) handleLive(c *gin.Context) {
-	c.JSON(http.StatusOK, liveResponse{Status: "ok"})
+	c.JSON(http.StatusOK, dto.LiveResponse{Status: "ok"})
 }
 
 // handleIssueToken exchanges a valid API key for a signed JWT.
@@ -56,12 +57,12 @@ func (s *Server) handleLive(c *gin.Context) {
 // @Tags Auth
 // @Accept json
 // @Produce json
-// @Param request body issueTokenRequest true "Issue token request"
-// @Success 200 {object} issueTokenResponse
-// @Failure 400 {object} apiError
-// @Failure 401 {object} apiError
-// @Failure 500 {object} apiError
-// @Failure 501 {object} apiError
+// @Param request body dto.IssueTokenRequest true "Issue token request"
+// @Success 200 {object} dto.IssueTokenResponse
+// @Failure 400 {object} dto.APIError
+// @Failure 401 {object} dto.APIError
+// @Failure 500 {object} dto.APIError
+// @Failure 501 {object} dto.APIError
 // @Router /api/v1/auth/token [post]
 func (s *Server) handleIssueToken(c *gin.Context) {
 	if len(s.jwtSecret) == 0 {
@@ -69,7 +70,7 @@ func (s *Server) handleIssueToken(c *gin.Context) {
 			"JWT signing is not configured (set SYNAPSE_JWT_SECRET)", nil)
 		return
 	}
-	var req issueTokenRequest
+	var req dto.IssueTokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request body", err.Error())
 		return
@@ -85,7 +86,7 @@ func (s *Server) handleIssueToken(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, "jwt_error", "failed to issue token", err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, issueTokenResponse{
+	c.JSON(http.StatusOK, dto.IssueTokenResponse{
 		Token:     token,
 		ExpiresIn: int(ttl.Seconds()),
 		Role:      string(id.Role),

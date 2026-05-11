@@ -68,6 +68,8 @@ These are currently allowed while keeping business orchestration clean:
 - Domain handle enum mapping (`EpisodeHandleType`) is now used in runtime handle-write path and aligned tests.
 - Domain human-action enum mapping (`HumanInterventionAction`) is now used for resume default action semantics.
 - API transport boundary validation strengthened for pagination (`limit`/`offset`), replay range (`percent`), and resume JSON payload parsing.
+- Workspace application service dependencies were renamed for clearer intent (`ExecutionStore`, `EpisodeStore`, `ExperienceStore`, `ReviewWriter`).
+- API HTTP DTOs were consolidated under `internal/api/dto` and Swagger definitions migrated to `dto.*` types.
 
 ## Remaining Gaps (Current)
 

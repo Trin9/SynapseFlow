@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Trin9/SynapseFlow/backend/internal/api/dto"
 	"github.com/Trin9/SynapseFlow/backend/internal/auth"
 	"github.com/Trin9/SynapseFlow/backend/internal/engine"
 	"github.com/Trin9/SynapseFlow/backend/pkg/models"
@@ -19,7 +20,7 @@ func generateID() string {
 }
 
 func writeError(c *gin.Context, status int, code string, message string, details interface{}) {
-	c.JSON(status, apiError{
+	c.JSON(status, dto.APIError{
 		Error:   message,
 		Code:    code,
 		Details: details,
