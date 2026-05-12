@@ -89,6 +89,8 @@ export function ForensicDossierDrawer() {
   const setSelectedEpisode = useGraphStore((s) => s.setSelectedEpisode)
   const replayPercent = useGraphStore((s) => s.replayPercent)
   const setReplayPercent = useGraphStore((s) => s.setReplayPercent)
+  const openComparisonOnDossier = useGraphStore((s) => s.openComparisonOnDossier)
+  const setOpenComparisonOnDossier = useGraphStore((s) => s.setOpenComparisonOnDossier)
 
   // ── Local state ────────────────────────────────────────────────────────
   const [dossier, setDossier] = useState<EpisodeDossierView | null>(null)
@@ -112,6 +114,9 @@ export function ForensicDossierDrawer() {
 
   // M5.3 — historical comparison sheet
   const [comparisonOpen, setComparisonOpen] = useState(false)
+
+  // Phase D — Copy dossier JSON to clipboard
+  const [copyLabel, setCopyLabel] = useState<'Copy JSON' | 'Copied!'>('Copy JSON')
 
   // ── Effects ────────────────────────────────────────────────────────────
 
@@ -164,6 +169,15 @@ export function ForensicDossierDrawer() {
       .catch(() => { /* non-blocking — header enrichment only */ })
     return () => { cancelled = true }
   }, [selectedEpisode?.exec_id])
+
+  // Allow callers (Library/History actions) to request opening comparison
+  // immediately after dossier opens.
+  useEffect(() => {
+    if (!selectedEpisode) return
+    if (!openComparisonOnDossier) return
+    setComparisonOpen(true)
+    setOpenComparisonOnDossier(false)
+  }, [openComparisonOnDossier, selectedEpisode, setOpenComparisonOnDossier])
 
   // ── Early return ───────────────────────────────────────────────────────
   if (!selectedEpisode) return null
@@ -231,8 +245,6 @@ export function ForensicDossierDrawer() {
     setActiveFocusKey((prev) => (prev === key ? null : key))
   }
 
-  // Phase D — Copy dossier JSON to clipboard
-  const [copyLabel, setCopyLabel] = useState<'Copy JSON' | 'Copied!'>('Copy JSON')
   function handleCopyJSON() {
     if (!dossier) return
     const payload = JSON.stringify({ episode: ep, dossier }, null, 2)

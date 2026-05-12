@@ -27,32 +27,49 @@ function computeDAGLayout(
   const CENTER_Y = 320
 
   // Build adjacency maps
-  const inDegree: Record<string, string[]> = {}
+  const inDegreeCount: Record<string, number> = {}
   const outEdgesMap: Record<string, string[]> = {}
   for (const n of nodes) {
-    inDegree[n.id] = []
+    inDegreeCount[n.id] = 0
     outEdgesMap[n.id] = []
   }
   for (const e of dagEdges) {
-    if (outEdgesMap[e.from] !== undefined) outEdgesMap[e.from].push(e.to)
-    if (inDegree[e.to] !== undefined) inDegree[e.to].push(e.from)
+    if (outEdgesMap[e.from] === undefined || inDegreeCount[e.to] === undefined) continue
+    outEdgesMap[e.from].push(e.to)
+    inDegreeCount[e.to] += 1
   }
 
-  // Assign levels: use longest-path (critical path) depth via BFS/relaxation
+  // Assign levels with Kahn topological traversal (cycle-safe).
   const levels: Record<string, number> = {}
   for (const n of nodes) levels[n.id] = 0
 
-  // Topological relaxation — iterate until stable (handles any DAG depth)
-  let changed = true
-  while (changed) {
-    changed = false
-    for (const e of dagEdges) {
-      const newLevel = (levels[e.from] ?? 0) + 1
-      if ((levels[e.to] ?? 0) < newLevel) {
-        levels[e.to] = newLevel
-        changed = true
-      }
+  const queue: string[] = []
+  for (const n of nodes) {
+    if ((inDegreeCount[n.id] ?? 0) === 0) queue.push(n.id)
+  }
+
+  let processed = 0
+  while (queue.length > 0) {
+    const id = queue.shift()!
+    processed += 1
+    const baseLevel = levels[id] ?? 0
+    for (const to of outEdgesMap[id] ?? []) {
+      const newLevel = baseLevel + 1
+      if ((levels[to] ?? 0) < newLevel) levels[to] = newLevel
+      inDegreeCount[to] -= 1
+      if (inDegreeCount[to] === 0) queue.push(to)
     }
+  }
+
+  // If cycles exist (agent loops), keep layout deterministic instead of hanging.
+  if (processed < nodes.length) {
+    const unresolved = nodes
+      .map((n) => n.id)
+      .filter((id) => (inDegreeCount[id] ?? 0) > 0)
+      .sort((a, b) => a.localeCompare(b))
+    unresolved.forEach((id, idx) => {
+      levels[id] = Math.max(levels[id] ?? 0, idx)
+    })
   }
 
   // Group nodes by level
@@ -139,6 +156,10 @@ interface GraphState {
   selectedEpisode: Episode | null
   setSelectedEpisode: (ep: Episode | null) => void
 
+  // Comparison intent (used to open comparison sheet from library/history actions)
+  openComparisonOnDossier: boolean
+  setOpenComparisonOnDossier: (open: boolean) => void
+
   // M3.4 — replay position (0–100)
   replayPercent: number
   setReplayPercent: (n: number) => void
@@ -184,6 +205,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       // B2: close any open dossier from a previous execution so it doesn't show stale data.
       selectedEpisode: null,
       replayPercent: 100,
+      openComparisonOnDossier: false,
     })
   },
 
@@ -199,6 +221,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       replayPercent: 100,
       viewLevel: 'overview',
       activeSuperNodeId: null,
+      openComparisonOnDossier: false,
     })
   },
 
@@ -294,6 +317,9 @@ export const useGraphStore = create<GraphState>((set, get) => ({
 
   selectedEpisode: null,
   setSelectedEpisode: (ep) => set({ selectedEpisode: ep }),
+
+  openComparisonOnDossier: false,
+  setOpenComparisonOnDossier: (open) => set({ openComparisonOnDossier: open }),
 
   replayPercent: 100,
   setReplayPercent: (n) => set({ replayPercent: n }),

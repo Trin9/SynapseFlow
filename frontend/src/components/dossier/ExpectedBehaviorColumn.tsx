@@ -175,10 +175,11 @@ export function ExpectedBehaviorColumn({
   const hint = activeFocusKey ? `linked: ${activeFocusKey}` : undefined
 
   if (dossier) {
+    const expected = dossier.expected_behavior ?? []
     return (
-      <Section title={`1. Expected Logic (${dossier.expected_behavior.length})`} hint={hint}>
-        {dossier.expected_behavior.length > 0 ? (
-          dossier.expected_behavior.map((item) => (
+      <Section title={`1. Expected Logic (${expected.length})`} hint={hint}>
+        {expected.length > 0 ? (
+          expected.map((item) => (
             <ExpectedBehaviorItem
               key={item.id}
               item={item}

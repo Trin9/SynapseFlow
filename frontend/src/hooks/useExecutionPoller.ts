@@ -16,7 +16,6 @@ export function useExecutionPoller() {
   const isRunning = useGraphStore((s) => s.isRunning)
   const setExecutionResult = useGraphStore((s) => s.setExecutionResult)
   const setIsRunning = useGraphStore((s) => s.setIsRunning)
-  const setActiveExecutionId = useGraphStore((s) => s.setActiveExecutionId)
 
   const TERMINAL = new Set(['completed', 'failed', 'timeout'])
 
@@ -36,11 +35,10 @@ export function useExecutionPoller() {
     setExecutionResult(data)
     if (TERMINAL.has(data.status)) {
       setIsRunning(false)
-      setActiveExecutionId(null)
     }
     // TERMINAL is stable (Set literal), intentionally omitted from deps
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, setExecutionResult, setIsRunning, setActiveExecutionId])
+  }, [data, setExecutionResult, setIsRunning])
 
   return {
     pollingError: error instanceof Error ? error.message : error ? String(error) : null,

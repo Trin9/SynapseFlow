@@ -252,10 +252,11 @@ export function RuntimeFactsColumn({
   const hint = activeFocusKey ? `linked: ${activeFocusKey}` : undefined
 
   if (dossier) {
+    const runtimeFacts = dossier.runtime_facts ?? []
     return (
-      <Section title={`3. Runtime Facts (${dossier.runtime_facts.length})`} hint={hint}>
-        {dossier.runtime_facts.length > 0 ? (
-          dossier.runtime_facts.map((fact) => (
+      <Section title={`3. Runtime Facts (${runtimeFacts.length})`} hint={hint}>
+        {runtimeFacts.length > 0 ? (
+          runtimeFacts.map((fact) => (
             <RuntimeFactItem
               key={fact.id}
               fact={fact}

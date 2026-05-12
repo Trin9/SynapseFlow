@@ -26,14 +26,20 @@ export default function App() {
         {useWorkbenchLayout ? (
           <WorkbenchLayout />
         ) : (
-          <div className="flex-1 flex overflow-hidden">
+          <div className="flex-1 min-h-0 flex overflow-hidden">
             {/* Workflow Library — BUILDER only, toggled via Toolbar */}
-            {!isReview && showLibrary && <WorkflowLibrary />}
+            {!isReview && showLibrary && (
+              <div className="w-[420px] max-w-[85vw] shrink-0 border-r bg-card">
+                <WorkflowLibrary />
+              </div>
+            )}
 
             {/* Node palette — hidden in REVIEW mode or when Library is open */}
             {!isReview && !showLibrary && <Sidebar />}
 
-            <Canvas />
+            <div className="flex-1 min-w-0 min-h-0">
+              <Canvas />
+            </div>
 
             {/* Config panel — hidden in REVIEW mode */}
             {!isReview && <ConfigPanel />}
@@ -48,8 +54,8 @@ export default function App() {
         {/* Bottom results panel (appears after execution) */}
         <ResultsPanel />
 
-        {/* Episode Detail overlay (renders on top of everything) */}
-        <EpisodeDetail />
+        {/* Episode Detail overlay (Classic layout only; Workbench renders its own drawer) */}
+        {!useWorkbenchLayout && <EpisodeDetail />}
       </div>
     </ReactFlowProvider>
   )

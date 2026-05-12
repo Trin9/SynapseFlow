@@ -206,8 +206,9 @@ export function VerdictBridgeColumn({
   const trustMap = useTrustMap(dossier?.expected_behavior ?? [])
 
   if (dossier) {
+    const verdictBridge = dossier.verdict_bridge ?? []
     return (
-      <Section title={`2. Causal Bridge (${dossier.verdict_bridge.length})`} hint={hint}>
+      <Section title={`2. Causal Bridge (${verdictBridge.length})`} hint={hint}>
         {dossier.display.verdict_label && (
           <div className="flex items-center gap-2 pb-2 border-b border-gray-100 dark:border-gray-700">
             <span
@@ -230,8 +231,8 @@ export function VerdictBridgeColumn({
             )}
           </div>
         )}
-        {dossier.verdict_bridge.length > 0 ? (
-          dossier.verdict_bridge.map((item) => (
+        {verdictBridge.length > 0 ? (
+          verdictBridge.map((item) => (
             <VerdictBridgeItem
               key={item.id}
               item={item}

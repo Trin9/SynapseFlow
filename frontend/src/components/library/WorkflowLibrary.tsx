@@ -1,8 +1,8 @@
 import { useState, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Play, Upload, BookOpen, GitCompare, ChevronRight, Zap, Loader2 } from 'lucide-react'
-import { listDAGs, getDAG, runSavedDAG } from '@/api/client'
-import { listExecutionSummaries } from '@/api/episodes'
+import { listDAGs, getDAG, runSavedDAG, getExecutionNodes } from '@/api/client'
+import { getEpisode, listEpisodeSummariesByExecution, listExecutionSummaries } from '@/api/episodes'
 import type { DAGConfig } from '@/types'
 import type { ExecutionSummaryView } from '@/types/workspace'
 import { useGraphStore } from '@/hooks/useGraphStore'
@@ -49,9 +49,11 @@ interface LibraryContentProps {
   onLoad: (id: string) => Promise<void>
   onRun: (id: string) => Promise<void>
   onReview: (execId: string) => void
+  onOpenDossier: (execId: string) => Promise<void>
+  onCompare: (execId: string) => Promise<void>
 }
 
-function LibraryContent({ dags, executions, onLoad, onRun, onReview }: LibraryContentProps) {
+function LibraryContent({ dags, executions, onLoad, onRun, onReview, onOpenDossier, onCompare }: LibraryContentProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -223,11 +225,11 @@ function LibraryContent({ dags, executions, onLoad, onRun, onReview }: LibraryCo
                           {isBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
                           Run
                         </Button>
-                        <Button size="xs" variant="outline" disabled={!latestExec} onClick={() => latestExec && onReview(latestExec.execution_id)} title="Open dossier from the latest execution">
+                        <Button size="xs" variant="outline" disabled={!latestExec || isBusy} onClick={() => latestExec && withBusy(id, () => onOpenDossier(latestExec.execution_id))} title="Open dossier from the latest execution">
                           <BookOpen className="w-3 h-3" />
                           Open Dossier
                         </Button>
-                        <Button size="xs" variant="outline" disabled={!latestExec} onClick={() => latestExec && onReview(latestExec.execution_id)} title="Open review workspace then compare">
+                        <Button size="xs" variant="outline" disabled={!latestExec || isBusy} onClick={() => latestExec && withBusy(id, () => onCompare(latestExec.execution_id))} title="Open dossier and compare against historical runs">
                           <GitCompare className="w-3 h-3" />
                           Compare
                         </Button>
@@ -421,27 +423,32 @@ export function WorkflowLibrary() {
   const enterReviewMode = useGraphStore((s) => s.enterReviewMode)
   const setActiveExecutionId = useGraphStore((s) => s.setActiveExecutionId)
   const setIsRunning = useGraphStore((s) => s.setIsRunning)
+  const setExecutionResult = useGraphStore((s) => s.setExecutionResult)
+  const setSelectedEpisode = useGraphStore((s) => s.setSelectedEpisode)
+  const setOpenComparisonOnDossier = useGraphStore((s) => s.setOpenComparisonOnDossier)
+  const setAppMode = useGraphStore((s) => s.setAppMode)
 
   const { data: dags = [], isLoading: dagsLoading } = useQuery({
     queryKey: ['dags'],
     queryFn: listDAGs,
   })
 
-  const { data: executions = [], isLoading: execsLoading } = useQuery({
+  const { data: executions = [], isLoading: execsLoading, error: execsError } = useQuery({
     queryKey: ['executions', 'summary'],
     queryFn: listExecutionSummaries,
   })
 
-  const loading = dagsLoading || execsLoading
+  const loading = dagsLoading
 
   // Load DAG onto canvas without running
   const handleLoad = useCallback(
     async (dagId: string) => {
       const dag = await getDAG(dagId)
+      setAppMode('BUILDER')
       loadFromDAGConfig(dag)
       setShowLibrary(false)
     },
-    [loadFromDAGConfig, setShowLibrary],
+    [loadFromDAGConfig, setAppMode, setShowLibrary],
   )
 
   // Load DAG then immediately start a run
@@ -449,12 +456,20 @@ export function WorkflowLibrary() {
     async (dagId: string) => {
       const dag = await getDAG(dagId)
       loadFromDAGConfig(dag)
+      setExecutionResult(null)
       const result = await runSavedDAG(dagId)
+      enterReviewMode(result.execution_id)
       setActiveExecutionId(result.execution_id)
       setIsRunning(true)
+      try {
+        const snapshot = await getExecutionNodes(result.execution_id)
+        setExecutionResult(snapshot)
+      } catch {
+        // Best-effort snapshot; poller continues even if this call fails.
+      }
       setShowLibrary(false)
     },
-    [loadFromDAGConfig, setActiveExecutionId, setIsRunning, setShowLibrary],
+    [enterReviewMode, loadFromDAGConfig, setActiveExecutionId, setExecutionResult, setIsRunning, setShowLibrary],
   )
 
   const handleReview = useCallback(
@@ -463,6 +478,27 @@ export function WorkflowLibrary() {
       setShowLibrary(false)
     },
     [enterReviewMode, setShowLibrary],
+  )
+
+  const handleOpenDossier = useCallback(
+    async (execId: string) => {
+      enterReviewMode(execId)
+      const summaries = await listEpisodeSummariesByExecution(execId)
+      if (summaries.length > 0) {
+        const episode = await getEpisode(summaries[0].episode_id)
+        setSelectedEpisode(episode)
+      }
+      setShowLibrary(false)
+    },
+    [enterReviewMode, setSelectedEpisode, setShowLibrary],
+  )
+
+  const handleCompare = useCallback(
+    async (execId: string) => {
+      setOpenComparisonOnDossier(true)
+      await handleOpenDossier(execId)
+    },
+    [handleOpenDossier, setOpenComparisonOnDossier],
   )
 
   const handleLoadSpec = useCallback(
@@ -495,6 +531,16 @@ export function WorkflowLibrary() {
 
       {/* Content */}
       <ScrollArea className="flex-1 min-h-0">
+        {execsError && (
+          <div className="mx-3 mt-2 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+            Execution history unavailable. Library can still load DAGs.
+          </div>
+        )}
+        {execsLoading && !execsError && (
+          <div className="mx-3 mt-2 text-[11px] text-muted-foreground">
+            Loading execution history...
+          </div>
+        )}
         {loading ? (
           <div className="p-3 space-y-2">
             {[1,2,3].map(i => <Skeleton key={i} className="h-24 w-full rounded-lg" />)}
@@ -506,6 +552,8 @@ export function WorkflowLibrary() {
             onLoad={handleLoad}
             onRun={handleRun}
             onReview={handleReview}
+            onOpenDossier={handleOpenDossier}
+            onCompare={handleCompare}
           />
         ) : tab === 'history' ? (
           <HistoryContent executions={executions} onReview={handleReview} />

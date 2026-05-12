@@ -137,10 +137,11 @@ export function HumanReviewPanel({
   // CR-013: also treat dossier.display.verdict_label as a resolved signal so that
   // the action row disappears after approve/override/abort even when the episode
   // status has not yet propagated to the frontend.
+  const verdictLabel = dossier?.display?.verdict_label ?? ''
   const dossierIndicatesResolved =
-    dossier?.display?.verdict_label != null && (
-      ['Approved', 'Aborted'].some((v) => dossier!.display.verdict_label!.startsWith(v)) ||
-      dossier!.display.verdict_label.startsWith('Overridden')
+    verdictLabel !== '' && (
+      ['Approved', 'Aborted'].some((v) => verdictLabel.startsWith(v)) ||
+      verdictLabel.startsWith('Overridden')
     )
 
   const isHumanInLoop =

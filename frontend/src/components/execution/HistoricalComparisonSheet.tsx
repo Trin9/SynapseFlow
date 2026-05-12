@@ -4,9 +4,9 @@
 //   • ComparisonNarrativeHeader: outcome verdict + dag context at top of body
 //   • Scene manifest default comparison target suggestion in search form
 //   • Improved current/historical split with run_label and duration
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { X, GitCompare } from 'lucide-react'
-import { getExecutionSummaryView, getComparisonTarget } from '@/api/episodes'
+import { getExecutionSummaryView, getComparisonTarget, listExecutionSummariesByDAG } from '@/api/episodes'
 import { getSceneManifest } from '@/lib/sceneManifest'
 import type { ExecutionSummaryView, ComparisonSummaryView } from '@/types/workspace'
 import { Badge } from '@/components/ui/badge'
@@ -128,6 +128,35 @@ export function HistoricalComparisonSheet({ execId, onClose }: HistoricalCompari
   const [error, setError] = useState<string | null>(null)
   const [currentSummary, setCurrentSummary] = useState<ExecutionSummaryView | null>(null)
   const [comparison, setComparison] = useState<ComparisonSummaryView | null>(null)
+  const [suggestions, setSuggestions] = useState<ExecutionSummaryView[]>([])
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    async function bootstrap() {
+      setSuggestionsLoading(true)
+      try {
+        const current = await getExecutionSummaryView(execId)
+        if (cancelled) return
+        setCurrentSummary(current)
+        const sameDag = await listExecutionSummariesByDAG(current.dag_id)
+        if (cancelled) return
+        const candidates = sameDag
+          .filter((e) => e.execution_id !== execId)
+          .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime())
+          .slice(0, 5)
+        setSuggestions(candidates)
+      } catch {
+        if (!cancelled) setSuggestions([])
+      } finally {
+        if (!cancelled) setSuggestionsLoading(false)
+      }
+    }
+    void bootstrap()
+    return () => {
+      cancelled = true
+    }
+  }, [execId])
 
   // Phase D — suggest scene manifest default comparison target
   const manifestDefault = (() => {
@@ -195,6 +224,28 @@ export function HistoricalComparisonSheet({ execId, onClose }: HistoricalCompari
             <span>↳ Use suggested baseline:</span>
             <span className="font-mono">{manifestDefault.slice(0, 16)}…</span>
           </button>
+        )}
+        {!loading && suggestions.length > 0 && !comparison && (
+          <div className="pt-1">
+            <p className="text-[10px] text-muted-foreground mb-1">Recent same-workflow runs:</p>
+            <div className="flex flex-wrap gap-1.5">
+              {suggestions.map((s) => (
+                <button
+                  key={s.execution_id}
+                  onClick={() => setInputValue(s.execution_id)}
+                  className="text-[10px] px-2 py-1 rounded border hover:bg-accent text-left"
+                  title={s.execution_id}
+                >
+                  {s.execution_id.slice(0, 8)}… {s.status}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {!loading && !suggestionsLoading && suggestions.length === 0 && !comparison && (
+          <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+            No comparable historical execution found for this workflow yet.
+          </p>
         )}
         {error && <p className="text-xs text-destructive">{error}</p>}
       </div>
