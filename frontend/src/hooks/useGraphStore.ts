@@ -164,6 +164,10 @@ interface GraphState {
   replayPercent: number
   setReplayPercent: (n: number) => void
 
+  // B2 — focused episode for the bottom ProcessTraceTray (separate from Dossier open)
+  focusedEpisodeId: string | null
+  setFocusedEpisodeId: (id: string | null) => void
+
   // SuperNode drilldown view level
   viewLevel: 'overview' | 'drilldown'
   activeSuperNodeId: string | null
@@ -221,9 +225,9 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       // CR-016: clear review-specific overlay state so the canvas is truly reset.
       selectedEpisode: null,
       replayPercent: 100,
+      focusedEpisodeId: null,
       viewLevel: 'overview',
       activeSuperNodeId: null,
-      openComparisonOnDossier: false,
     })
   },
 
@@ -326,6 +330,9 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   replayPercent: 100,
   setReplayPercent: (n) => set({ replayPercent: n }),
 
+  focusedEpisodeId: null,
+  setFocusedEpisodeId: (id) => set({ focusedEpisodeId: id }),
+
   viewLevel: 'overview',
   activeSuperNodeId: null,
   enterDrilldown: (nodeId) => set({ viewLevel: 'drilldown', activeSuperNodeId: nodeId }),
@@ -426,6 +433,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       activeExecutionId: null,
       workflowId: null,
       nodeStatuses: {},
+      focusedEpisodeId: null,
       viewLevel: 'overview',
       activeSuperNodeId: null,
     })

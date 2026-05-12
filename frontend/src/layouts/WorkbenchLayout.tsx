@@ -13,6 +13,7 @@ import { useGraphStore } from '@/hooks/useGraphStore'
 import { EpisodeOverviewStrip } from '@/components/execution/EpisodeOverviewCard'
 import { TriggerContextPanel } from '@/components/execution/TriggerContextPanel'
 import { ExecutionNarrativeBanner } from '@/components/execution/ExecutionNarrativeBanner'
+import { ProcessTraceTray } from '@/components/execution/ProcessTraceTray'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
@@ -109,6 +110,7 @@ export function WorkbenchLayout() {
           <div className="flex-1 min-h-0">
             <Canvas />
           </div>
+          {isReview && activeExecutionId && <ProcessTraceTray />}
         </div>
 
         {!isReview && (

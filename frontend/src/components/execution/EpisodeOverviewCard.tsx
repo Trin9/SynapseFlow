@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { FileText, Eye, Database, GitBranch, Loader2, CheckCircle, XCircle, AlertTriangle, Circle } from 'lucide-react'
 import { getEpisode, listEpisodeSummariesByExecution } from '@/api/episodes'
@@ -54,6 +54,9 @@ interface EpisodeOverviewCardProps {
 }
 
 export function EpisodeOverviewCard({ summary, onOpenDossier, busy }: EpisodeOverviewCardProps) {
+  const focusedEpisodeId = useGraphStore((s) => s.focusedEpisodeId)
+  const setFocusedEpisodeId = useGraphStore((s) => s.setFocusedEpisodeId)
+  const isFocused = focusedEpisodeId === summary.episode_id
   const tone = resolveVerdictTone(summary)
   const v = VERDICT_COLORS[tone]
   const verdictDisplay = v.icon
@@ -66,10 +69,14 @@ export function EpisodeOverviewCard({ summary, onOpenDossier, busy }: EpisodeOve
       : null
 
   return (
-    <div className={cn(
-      'w-[270px] shrink-0 rounded-lg border shadow-sm hover:shadow-md transition-shadow',
-      'bg-card text-card-foreground overflow-hidden flex',
-    )}>
+    <div
+      onClick={() => setFocusedEpisodeId(isFocused ? null : summary.episode_id)}
+      className={cn(
+        'w-[270px] shrink-0 rounded-lg border shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden flex',
+        'bg-card text-card-foreground',
+        isFocused && 'ring-2 ring-blue-400 dark:ring-blue-500 shadow-md',
+      )}
+    >
       {/* Left verdict colour stripe */}
       <div className={cn('w-[5px] shrink-0', v.left)} />
 
@@ -154,6 +161,8 @@ export function EpisodeOverviewCard({ summary, onOpenDossier, busy }: EpisodeOve
 
 export function EpisodeOverviewStrip({ executionId }: { executionId: string }) {
   const setSelectedEpisode = useGraphStore((s) => s.setSelectedEpisode)
+  const focusedEpisodeId = useGraphStore((s) => s.focusedEpisodeId)
+  const setFocusedEpisodeId = useGraphStore((s) => s.setFocusedEpisodeId)
   const [openingEpisodeId, setOpeningEpisodeId] = useState<string | null>(null)
 
   const { data: summaries = [], isLoading, error } = useQuery({
@@ -167,7 +176,16 @@ export function EpisodeOverviewStrip({ executionId }: { executionId: string }) {
     [summaries],
   )
 
+  // Auto-focus the first episode when summaries load (once), so the
+  // bottom ProcessTraceTray has a target without the user clicking.
+  useEffect(() => {
+    if (!focusedEpisodeId && sorted.length > 0) {
+      setFocusedEpisodeId(sorted[0].episode_id)
+    }
+  }, [focusedEpisodeId, sorted, setFocusedEpisodeId])
+
   async function handleOpenDossier(episodeId: string) {
+    setFocusedEpisodeId(episodeId)
     setOpeningEpisodeId(episodeId)
     try {
       const episode = await getEpisode(episodeId)
