@@ -1,4 +1,4 @@
-import { memo, useState } from 'react'
+import { memo } from 'react'
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
 import { Layers, ScrollText } from 'lucide-react'
 import { NODE_TYPE_INFO, type NodeType, type AnyNodeType } from '@/types'
@@ -208,9 +208,9 @@ function childDotColor(type?: string): string {
   }
 }
 
-function EpisodeOverviewNodeBase({ data, selected }: NodeProps<FlowNode>) {
+function EpisodeOverviewNodeBase({ data, selected, id }: NodeProps<FlowNode>) {
   const setSelectedEpisode = useGraphStore((s) => s.setSelectedEpisode)
-  const [showPreview, setShowPreview] = useState(false)
+  const enterDrilldown = useGraphStore((s) => s.enterDrilldown)
 
   const verdict = typeof data.config?.verdict === 'string' ? data.config.verdict : undefined
   const verdictLabel =
@@ -226,6 +226,9 @@ function EpisodeOverviewNodeBase({ data, selected }: NodeProps<FlowNode>) {
     ? (data.config.child_preview as Array<{ id?: string; label?: string; type?: string }>).filter(
         (item) => typeof item?.label === 'string'
       )
+    : []
+  const childNodeIds = Array.isArray(data.childNodeIds)
+    ? data.childNodeIds.filter((id): id is string => typeof id === 'string')
     : []
 
   async function openDossier() {
@@ -300,17 +303,17 @@ function EpisodeOverviewNodeBase({ data, selected }: NodeProps<FlowNode>) {
           )}
           <button
             onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); setShowPreview(v => !v) }}
-            disabled={childPreview.length === 0}
+            onClick={(e) => { e.stopPropagation(); enterDrilldown(id) }}
+            disabled={childNodeIds.length === 0}
             className="absolute bottom-1.5 right-1.5 h-6 px-2 text-[11px] font-medium rounded bg-cyan-600 text-zinc-950 hover:bg-cyan-500 disabled:opacity-30 disabled:cursor-not-allowed"
           >
-            View
+            View Inside →
           </button>
         </div>
 
         {/* Actions row */}
         <div className="mt-3 flex items-center justify-between gap-2">
-          <span className="text-xs text-zinc-500">{childPreview.length} internal nodes</span>
+          <span className="text-xs text-zinc-500">{childNodeIds.length} internal nodes</span>
           <button
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => { e.stopPropagation(); void openDossier() }}
@@ -321,17 +324,6 @@ function EpisodeOverviewNodeBase({ data, selected }: NodeProps<FlowNode>) {
           </button>
         </div>
 
-        {/* Expandable child list */}
-        {showPreview && childPreview.length > 0 && (
-          <div className="mt-2 rounded border border-zinc-800 bg-zinc-900/60 px-2 py-1.5 space-y-1">
-            {childPreview.map((item, idx) => (
-              <div key={`${item.id ?? item.label}-${idx}`} className="flex items-center gap-2 text-[11px] text-zinc-400">
-                <div className={cn('h-2 w-2 rounded-full shrink-0', childDotColor(item.type))} />
-                {item.label}
-              </div>
-            ))}
-          </div>
-        )}
       </div>
       <Handle type="source" position={Position.Right} className="!h-3 !w-3 !border-zinc-500 !bg-zinc-600" />
     </>

@@ -121,6 +121,10 @@ export function Canvas() {
 
   const reviewSwapNodes = useMemo<FlowNode[]>(() => {
     if (!useEpisodeRendererSwap) return []
+    const drilldownChildIds = nodes
+      .filter((n) => n.data.nodeType !== 'super')
+      .map((n) => n.id)
+
     return orderedEpisodeSummaries.map((sv, idx) => ({
       id: `episode-${sv.episode_id}`,
       type: 'episodeOverviewNode',
@@ -139,9 +143,10 @@ export function Canvas() {
           confidence: sv.confidence,
           child_preview: sceneManifest?.childPreview ?? [],
         },
+        childNodeIds: drilldownChildIds,
       },
     }))
-  }, [orderedEpisodeSummaries, sceneManifest?.childPreview, useEpisodeRendererSwap])
+  }, [nodes, orderedEpisodeSummaries, sceneManifest?.childPreview, useEpisodeRendererSwap])
 
   const reviewSwapEdges = useMemo<FlowEdge[]>(() => {
     if (!useEpisodeRendererSwap) return []
@@ -164,30 +169,42 @@ export function Canvas() {
   const hasEpisodeOverview = useEpisodeRendererSwap && reviewSwapNodes.length > 0
 
   const visibleNodes: FlowNode[] = hasEpisodeOverview
-    ? reviewSwapNodes
+    ? isDrilldown
+      ? (() => {
+          const episodeNode = reviewSwapNodes.find((n) => n.id === activeSuperNodeId)
+          const childSet = new Set(episodeNode?.data.childNodeIds ?? [])
+          return nodes.filter((n) => childSet.has(n.id))
+        })()
+      : reviewSwapNodes
     : isDrilldown
-    ? nodes.filter((n) => {
-        if (n.id === activeSuperNodeId) return true
-        const superNode = nodes.find((s) => s.id === activeSuperNodeId)
-        return (superNode?.data.childNodeIds ?? []).includes(n.id)
-      })
-    : nodes
+      ? nodes.filter((n) => {
+          if (n.id === activeSuperNodeId) return true
+          const superNode = nodes.find((s) => s.id === activeSuperNodeId)
+          return (superNode?.data.childNodeIds ?? []).includes(n.id)
+        })
+      : nodes
 
   const visibleEdges: FlowEdge[] = hasEpisodeOverview
-    ? reviewSwapEdges
+    ? isDrilldown
+      ? (() => {
+          const episodeNode = reviewSwapNodes.find((n) => n.id === activeSuperNodeId)
+          const childSet = new Set(episodeNode?.data.childNodeIds ?? [])
+          return edges.filter((e) => childSet.has(e.source) && childSet.has(e.target))
+        })()
+      : reviewSwapEdges
     : isDrilldown
-    ? (() => {
-        const superNode = nodes.find((s) => s.id === activeSuperNodeId)
-        const childSet = new Set(superNode?.data.childNodeIds ?? [])
-        childSet.add(activeSuperNodeId!)
-        return edges.filter((e) => childSet.has(e.source) && childSet.has(e.target))
-      })()
-    : edges
+      ? (() => {
+          const superNode = nodes.find((s) => s.id === activeSuperNodeId)
+          const childSet = new Set(superNode?.data.childNodeIds ?? [])
+          childSet.add(activeSuperNodeId!)
+          return edges.filter((e) => childSet.has(e.source) && childSet.has(e.target))
+        })()
+      : edges
 
   return (
     <div className="h-full w-full min-h-0 flex flex-col">
       {/* Drilldown breadcrumb bar */}
-      {!hasEpisodeOverview && isDrilldown && (
+      {isDrilldown && (
         <div className="flex items-center gap-2 px-4 py-1.5 bg-indigo-50 dark:bg-indigo-900/30 border-b border-indigo-200 dark:border-indigo-700 text-xs shrink-0">
           <button
             onClick={exitDrilldown}
@@ -197,10 +214,12 @@ export function Canvas() {
           </button>
           <span className="text-indigo-300 dark:text-indigo-600">/</span>
           <span className="font-semibold text-indigo-700 dark:text-indigo-300">
-            {nodes.find((n) => n.id === activeSuperNodeId)?.data.label ?? activeSuperNodeId}
+            {hasEpisodeOverview
+              ? reviewSwapNodes.find((n) => n.id === activeSuperNodeId)?.data.label ?? activeSuperNodeId
+              : nodes.find((n) => n.id === activeSuperNodeId)?.data.label ?? activeSuperNodeId}
           </span>
           <span className="text-indigo-400 dark:text-indigo-500 ml-1">
-            ({visibleNodes.length - 1} child node{visibleNodes.length - 1 !== 1 ? 's' : ''})
+            ({visibleNodes.length} child node{visibleNodes.length !== 1 ? 's' : ''})
           </span>
         </div>
       )}
