@@ -130,11 +130,11 @@ export function Section({
   children: ReactNode
 }) {
   return (
-    <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden h-full flex flex-col bg-white dark:bg-gray-900">
-      <div className="px-4 py-2 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shrink-0 flex items-center justify-between">
-        <h3 className="text-[11px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">{title}</h3>
+    <div className="border rounded-lg overflow-hidden h-full flex flex-col bg-card">
+      <div className="px-4 py-2 bg-muted border-b shrink-0 flex items-center justify-between">
+        <h3 className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">{title}</h3>
         {hint && (
-          <span className="text-[10px] text-blue-500 font-medium italic">{hint}</span>
+          <span className="text-[10px] text-primary font-medium italic">{hint}</span>
         )}
       </div>
       <div className="px-4 py-3 flex-1 overflow-y-auto space-y-4">{children}</div>

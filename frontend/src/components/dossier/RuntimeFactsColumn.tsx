@@ -2,6 +2,7 @@
 // M3.4: facts not in visible_runtime_fact_ids are dimmed (opacity-40).
 // M4.1: facts whose focus_key matches activeFocusKey receive a blue ring.
 // Demo-migration: syntax highlighting for json/log/code source_types.
+import { motion } from 'framer-motion'
 import { Section, collectorStyle, prettyJSON } from './_shared'
 import type { Episode, EpisodeEvidence, EvidenceCollectorSpec } from '@/types/episode'
 import type {
@@ -57,7 +58,7 @@ function SyntaxCodeBlock({
   const useSyntax = sourceType === 'json' || sourceType === 'log' || sourceType === 'code'
 
   return (
-    <div className="relative overflow-x-auto max-h-64 rounded border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
+    <div className="relative overflow-x-auto max-h-64 rounded border bg-muted">
       <pre className="p-2 font-mono text-[11px]">
         {lines.map((line, i) => {
           const lineNum = i + 1
@@ -70,17 +71,17 @@ function SyntaxCodeBlock({
                 isHighlighted ? 'rounded bg-teal-50 dark:bg-teal-900/30 ring-1 ring-teal-300 dark:ring-teal-700' : '',
               ].filter(Boolean).join(' ')}
             >
-              <span className="mr-3 w-6 select-none text-right shrink-0 text-gray-400 dark:text-gray-600">
+              <span className="mr-3 w-6 select-none text-right shrink-0 text-muted-foreground/50">
                 {lineNum}
               </span>
               {useSyntax ? (
                 <code
-                  className="flex-1 whitespace-pre text-gray-700 dark:text-gray-300"
+                  className="flex-1 whitespace-pre text-foreground"
                   // eslint-disable-next-line react/no-danger
                   dangerouslySetInnerHTML={{ __html: highlightLine(line, sourceType) }}
                 />
               ) : (
-                <code className="flex-1 whitespace-pre text-gray-700 dark:text-gray-300">{line}</code>
+                <code className="flex-1 whitespace-pre text-foreground">{line}</code>
               )}
             </div>
           )
@@ -104,7 +105,7 @@ function CollectorSpecBadges({ spec }: { spec: EvidenceCollectorSpec }) {
       )}
       {spec.raw_command && (
         <code
-          className="text-[11px] font-mono text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-2 py-0.5 rounded break-all"
+          className="text-[11px] font-mono text-muted-foreground bg-muted border rounded px-2 py-0.5 break-all"
           title={spec.raw_command}
         >
           {spec.raw_command.length > 60
@@ -131,18 +132,18 @@ function EvidenceItem({ ev }: { ev: EpisodeEvidence }) {
     : null
 
   return (
-    <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3 space-y-2 bg-white dark:bg-gray-800 relative group">
+    <div className="border rounded-lg p-3 space-y-2 bg-card relative group">
       <div className="flex items-center gap-2 flex-wrap pr-8">
         <span
           className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 ${typeColor}`}
         >
           {ev.type}
         </span>
-        <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{ev.label ?? ev.node_id}</span>
+        <span className="text-sm font-medium text-foreground">{ev.label ?? ev.node_id}</span>
       </div>
       {ev.collector_spec && <CollectorSpecBadges spec={ev.collector_spec} />}
       {displayContent && (
-        <pre className="text-[11px] font-mono bg-gray-50 dark:bg-gray-900 rounded p-2 overflow-x-auto max-h-64 text-gray-700 dark:text-gray-300 border border-gray-100 dark:border-gray-700 whitespace-pre-wrap">
+        <pre className="text-[11px] font-mono bg-muted rounded p-2 overflow-x-auto max-h-64 text-foreground border whitespace-pre-wrap">
           {displayContent}
         </pre>
       )}
@@ -158,10 +159,12 @@ function RuntimeFactItem({
   fact,
   isVisible = true,
   isActive = false,
+  index = 0,
 }: {
   fact: RuntimeFactView
   isVisible?: boolean
   isActive?: boolean
+  index?: number
 }) {
   const typeColor =
     fact.source_type === 'text'
@@ -191,12 +194,15 @@ function RuntimeFactItem({
       : (fact.source_type ?? 'text')
 
   return (
-    <div
+    <motion.div
       data-focus-key={fact.focus_key ?? undefined}
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.06, duration: 0.3, ease: 'easeOut' }}
       className={[
-        'border border-gray-200 dark:border-gray-700 rounded-lg p-3 space-y-2 bg-white dark:bg-gray-800 transition-all',
+        'border rounded-lg p-3 space-y-2 bg-card transition-all',
         isVisible ? '' : 'opacity-40',
-        isActive ? 'ring-2 ring-blue-400' : '',
+        isActive ? 'ring-2 ring-primary' : '',
       ]
         .filter(Boolean)
         .join(' ')}
@@ -209,7 +215,7 @@ function RuntimeFactItem({
             {fact.source_type}
           </span>
         )}
-        <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{fact.title}</span>
+        <span className="text-sm font-medium text-foreground">{fact.title}</span>
       </div>
       {collectorMethod && (
         <span
@@ -228,7 +234,7 @@ function RuntimeFactItem({
       {fact.content_ref && !fact.content && (
         <span className="text-xs text-blue-500 block">{fact.content_ref}</span>
       )}
-    </div>
+    </motion.div>
   )
 }
 
@@ -256,7 +262,7 @@ export function RuntimeFactsColumn({
     return (
       <Section title={`3. Runtime Facts (${runtimeFacts.length})`} hint={hint}>
         {runtimeFacts.length > 0 ? (
-          runtimeFacts.map((fact) => (
+          runtimeFacts.map((fact, i) => (
             <RuntimeFactItem
               key={fact.id}
               fact={fact}
@@ -266,10 +272,11 @@ export function RuntimeFactsColumn({
               isActive={
                 fact.focus_key != null && fact.focus_key === activeFocusKey
               }
+              index={i}
             />
           ))
         ) : (
-          <div className="text-center py-10 text-gray-400 dark:text-gray-500 text-sm">
+          <div className="text-center py-10 text-muted-foreground text-sm">
             No runtime facts collected.
           </div>
         )}
