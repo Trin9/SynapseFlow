@@ -1,6 +1,8 @@
 // Middle pane of the Forensic Dossier — Causal Bridge & Verdict.
 // M4.1: items whose focus_key matches activeFocusKey receive a blue ring.
 // Demo-migration: Trust Boundary tone badge per bridge item + Semantic Linkage Rail.
+// Phase D: staggered entrance animations on bridge items.
+import { motion } from 'framer-motion'
 import { Section, resultStyle, confidenceStyle, useTrustMap, trustBadgeStyle } from './_shared'
 import type { TrustDescriptor } from './_shared'
 import type { Episode, EpisodeVerdict } from '@/types/episode'
@@ -153,16 +155,21 @@ function VerdictBridgeItem({
   item,
   activeFocusKey,
   trust,
+  index = 0,
 }: {
   item: VerdictBridgeItemView
   activeFocusKey: string | null
   trust?: TrustDescriptor
+  index?: number
 }) {
   const isActive = item.focus_key != null && item.focus_key === activeFocusKey
 
   return (
-    <div
+    <motion.div
       data-focus-key={item.focus_key ?? undefined}
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.08, duration: 0.3, ease: 'easeOut' }}
       className={[
         'border border-gray-200 dark:border-gray-700 rounded-lg p-3 space-y-1.5 bg-white dark:bg-gray-800 transition-all',
         isActive ? 'ring-2 ring-blue-400' : '',
@@ -184,7 +191,7 @@ function VerdictBridgeItem({
       {trust && (
         <p className="text-[11px] text-gray-400 dark:text-gray-500 italic">{trust.detail}</p>
       )}
-    </div>
+    </motion.div>
   )
 }
 
@@ -232,12 +239,13 @@ export function VerdictBridgeColumn({
           </div>
         )}
         {verdictBridge.length > 0 ? (
-          verdictBridge.map((item) => (
+          verdictBridge.map((item, i) => (
             <VerdictBridgeItem
               key={item.id}
               item={item}
               activeFocusKey={activeFocusKey}
               trust={item.focus_key ? trustMap[item.focus_key] : undefined}
+              index={i}
             />
           ))
         ) : (

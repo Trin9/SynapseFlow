@@ -1,20 +1,18 @@
-// M5.3 — Historical Comparison Sheet.
+// M5.3 — Historical Comparison Sheet (Phase D: full-screen split layout).
 //
-// Phase D enhancements:
-//   • ComparisonNarrativeHeader: outcome verdict + dag context at top of body
-//   • Scene manifest default comparison target suggestion in search form
-//   • Improved current/historical split with run_label and duration
+// Full-screen overlay that lets the operator compare the current execution
+// against a historical one side-by-side, with explainability sections.
 import { useEffect, useState } from 'react'
-import { X, GitCompare } from 'lucide-react'
+import { motion } from 'framer-motion'
+import { X, GitCompare, Search, Info, AlertTriangle } from 'lucide-react'
 import { getExecutionSummaryView, getComparisonTarget, listExecutionSummariesByDAG } from '@/api/episodes'
 import { getSceneManifest } from '@/lib/sceneManifest'
 import type { ExecutionSummaryView, ComparisonSummaryView } from '@/types/workspace'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
 
-// ─── Narrative header ─────────────────────────────────────────────────────
+// ─── Outcome helpers ───────────────────────────────────────────────────────
 
 function outcomeVariant(outcome: string): 'success' | 'destructive' | 'warning' | 'secondary' {
   if (outcome === 'match') return 'success'
@@ -29,85 +27,65 @@ const OUTCOME_LABEL: Record<string, string> = {
   partial:   'Partially aligned — notable differences observed',
 }
 
-function ComparisonNarrativeHeader({
-  current,
-  comparison,
+// ─── Execution detail card ─────────────────────────────────────────────────
+
+function ExecutionDetailCard({
+  title,
+  summary,
+  variant = 'default',
 }: {
-  current: ExecutionSummaryView
-  comparison: ComparisonSummaryView
+  title: string
+  summary: ExecutionSummaryView
+  variant?: 'current' | 'historical' | 'default'
 }) {
-  const outcome = comparison.outcome ?? 'unknown'
-  const label = OUTCOME_LABEL[outcome] ?? outcome
+  const isCurrent = variant === 'current'
+  const statusVariant = summary.status === 'completed' ? 'success' as const :
+    summary.status === 'failed' ? 'destructive' as const :
+    summary.status === 'running' ? 'info' as const :
+    'secondary' as const
 
   return (
-    <div className="px-4 py-3 rounded-xl border mb-1 bg-muted/40">
-      <div className="flex items-center gap-2 mb-1">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Comparison Result</span>
-        <Badge variant={outcomeVariant(outcome)} className="uppercase text-[9px]">{outcome}</Badge>
+    <div className={[
+      'rounded-xl border p-4 space-y-3',
+      isCurrent ? 'border-blue-200 dark:border-blue-700 bg-blue-50/30 dark:bg-blue-900/10' :
+      variant === 'historical' ? 'border-violet-200 dark:border-violet-700 bg-violet-50/30 dark:bg-violet-900/10' :
+      'bg-card',
+    ].join(' ')}>
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+          {title}
+        </span>
+        <Badge variant={statusVariant} className="text-[9px] uppercase">{summary.status}</Badge>
       </div>
-      <p className="text-sm font-semibold leading-snug">{label}</p>
-      <p className="text-xs mt-0.5 text-muted-foreground">
-        {current.dag_name}
-        {current.workflow_kind ? ` · ${current.workflow_kind}` : ''}
-        {current.display.run_label ? ` · ${current.display.run_label}` : ''}
-      </p>
-    </div>
-  )
-}
 
-// ─── Left (current execution) side ───────────────────────────────────────
-
-function CurrentSide({ summary }: { summary: ExecutionSummaryView }) {
-  return (
-    <div className="flex-1 min-w-0 space-y-2">
-      <span className="wb-section-header block">Current</span>
-      <div className="space-y-1 text-xs text-foreground">
+      <div className="space-y-1.5 text-xs">
         <div className="flex gap-2">
-          <span className="text-muted-foreground w-16 shrink-0">DAG</span>
+          <span className="text-muted-foreground w-14 shrink-0">DAG</span>
           <span className="font-medium truncate">{summary.dag_name}</span>
         </div>
         <div className="flex gap-2">
-          <span className="text-muted-foreground w-16 shrink-0">Status</span>
-          <span className="font-mono font-semibold">{summary.status}</span>
-        </div>
-        <div className="flex gap-2">
-          <span className="text-muted-foreground w-16 shrink-0">Kind</span>
+          <span className="text-muted-foreground w-14 shrink-0">Kind</span>
           <span className="capitalize">{summary.workflow_kind}</span>
         </div>
         {summary.display.run_label && (
           <div className="flex gap-2">
-            <span className="text-muted-foreground w-16 shrink-0">Label</span>
-            <span className="italic text-muted-foreground truncate">{summary.display.run_label}</span>
+            <span className="text-muted-foreground w-14 shrink-0">Label</span>
+            <span className="italic truncate">{summary.display.run_label}</span>
           </div>
         )}
         <div className="flex gap-2">
-          <span className="text-muted-foreground w-16 shrink-0">ID</span>
-          <span className="font-mono text-muted-foreground/50 truncate">{summary.execution_id.slice(0, 12)}…</span>
+          <span className="text-muted-foreground w-14 shrink-0">Started</span>
+          <span className="font-mono text-[11px]">{new Date(summary.started_at).toLocaleString()}</span>
         </div>
-      </div>
-    </div>
-  )
-}
-
-// ─── Right (historical / comparison) side ─────────────────────────────────
-
-function HistoricalSide({ comparison }: { comparison: ComparisonSummaryView }) {
-  return (
-    <div className="flex-1 min-w-0 space-y-2">
-      <span className="wb-section-header block">Historical</span>
-      <div className="space-y-1 text-xs text-foreground">
-        {comparison.outcome && (
-          <Badge variant={outcomeVariant(comparison.outcome)} className="uppercase text-[9px] mb-1">
-            {comparison.outcome}
-          </Badge>
-        )}
-        <p className="font-medium leading-snug">{comparison.title}</p>
-        {comparison.compared_against && (
-          <p className="text-muted-foreground italic text-[11px]">{comparison.compared_against}</p>
+        {summary.duration_ms > 0 && (
+          <div className="flex gap-2">
+            <span className="text-muted-foreground w-14 shrink-0">Duration</span>
+            <span className="font-mono">{(summary.duration_ms / 1000).toFixed(1)}s</span>
+          </div>
         )}
         <div className="flex gap-2">
-          <span className="text-muted-foreground w-16 shrink-0">ID</span>
-          <span className="font-mono text-muted-foreground/50 truncate">{comparison.execution_id.slice(0, 12)}…</span>
+          <span className="text-muted-foreground w-14 shrink-0">ID</span>
+          <span className="font-mono text-muted-foreground/50 truncate text-[11px]">{summary.execution_id}</span>
         </div>
       </div>
     </div>
@@ -117,7 +95,6 @@ function HistoricalSide({ comparison }: { comparison: ComparisonSummaryView }) {
 // ─── Sheet ────────────────────────────────────────────────────────────────
 
 export interface HistoricalComparisonSheetProps {
-  /** The current execution id (the "left" side of the comparison). */
   execId: string
   onClose: () => void
 }
@@ -153,12 +130,9 @@ export function HistoricalComparisonSheet({ execId, onClose }: HistoricalCompari
       }
     }
     void bootstrap()
-    return () => {
-      cancelled = true
-    }
+    return () => { cancelled = true }
   }, [execId])
 
-  // Phase D — suggest scene manifest default comparison target
   const manifestDefault = (() => {
     if (!currentSummary) return null
     const m = getSceneManifest(currentSummary.dag_id, currentSummary.dag_name)
@@ -186,123 +160,214 @@ export function HistoricalComparisonSheet({ execId, onClose }: HistoricalCompari
     }
   }
 
-  return (
-    <div className="absolute right-0 top-0 bottom-0 w-[480px] bg-card border-l z-20 flex flex-col overflow-hidden wb-animate-slide-right">
-      {/* Header */}
-      <div className="h-10 px-4 border-b flex items-center justify-between shrink-0">
-        <span className="wb-section-header flex items-center gap-1.5">
-          <GitCompare className="w-3.5 h-3.5" />
-          Execution Comparison
-        </span>
-        <Button size="xs" variant="ghost" onClick={onClose} className="h-6 w-6 p-0">
-          <X className="w-3.5 h-3.5" />
-        </Button>
-      </div>
+  const outcome = comparison?.outcome
 
-      {/* Search form */}
-      <div className="px-4 py-3 border-b shrink-0 space-y-2">
-        <label className="wb-section-header block">Historical Execution ID</label>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleFetch() }}
-            placeholder="Paste execution UUID…"
-            className="flex-1 border rounded-lg px-3 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-ring bg-background text-foreground"
-          />
-          <Button size="sm" onClick={handleFetch} disabled={loading || !inputValue.trim()}>
-            {loading ? '…' : 'Compare'}
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-6"
+    >
+      <motion.div
+        initial={{ scale: 0.96, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.96, opacity: 0 }}
+        transition={{ type: 'spring', damping: 25, stiffness: 220 }}
+        className="w-full max-w-[1400px] h-full max-h-[90vh] bg-card rounded-2xl shadow-2xl flex flex-col overflow-hidden border"
+      >
+        {/* Header */}
+        <div className="h-12 px-5 border-b flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2">
+            <GitCompare className="w-4 h-4 text-muted-foreground" />
+            <span className="text-sm font-semibold text-foreground">Execution Comparison</span>
+            <span className="text-[11px] text-muted-foreground">
+              Compare the current workflow execution against a recalled historical baseline
+            </span>
+          </div>
+          <Button size="xs" variant="ghost" onClick={onClose}>
+            <X className="w-4 h-4" />
           </Button>
         </div>
-        {/* Phase D — scene manifest default comparison suggestion */}
-        {manifestDefault && !comparison && (
-          <button
-            onClick={() => setInputValue(manifestDefault)}
-            className="text-[10px] text-blue-500 dark:text-blue-400 hover:underline flex items-center gap-1"
-          >
-            <span>↳ Use suggested baseline:</span>
-            <span className="font-mono">{manifestDefault.slice(0, 16)}…</span>
-          </button>
-        )}
-        {!loading && suggestions.length > 0 && !comparison && (
-          <div className="pt-1">
-            <p className="text-[10px] text-muted-foreground mb-1">Recent same-workflow runs:</p>
-            <div className="flex flex-wrap gap-1.5">
-              {suggestions.map((s) => (
-                <button
-                  key={s.execution_id}
-                  onClick={() => setInputValue(s.execution_id)}
-                  className="text-[10px] px-2 py-1 rounded border hover:bg-accent text-left"
-                  title={s.execution_id}
-                >
-                  {s.execution_id.slice(0, 8)}… {s.status}
-                </button>
-              ))}
+
+        {/* Search form */}
+        <div className="px-5 py-2.5 border-b shrink-0 space-y-1.5 bg-muted/20">
+          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+            Historical Execution ID
+          </label>
+          <div className="flex gap-2">
+            <div className="flex-1 relative">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleFetch() }}
+                placeholder="Paste execution UUID or pick from suggestions below..."
+                className="w-full border rounded-lg pl-9 pr-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-ring bg-background text-foreground"
+              />
             </div>
+            <Button size="sm" onClick={handleFetch} disabled={loading || !inputValue.trim()}>
+              {loading ? '…' : 'Compare'}
+            </Button>
           </div>
-        )}
-        {!loading && !suggestionsLoading && suggestions.length === 0 && !comparison && (
-          <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
-            No comparable historical execution found for this workflow yet.
-          </p>
-        )}
-        {error && <p className="text-xs text-destructive">{error}</p>}
-      </div>
-
-      {/* Comparison body */}
-      <ScrollArea className="flex-1 min-h-0">
-        {currentSummary && comparison ? (
-          <div className="p-4 space-y-4">
-            {/* Phase D — Narrative outcome header */}
-            <ComparisonNarrativeHeader current={currentSummary} comparison={comparison} />
-
-            {/* Split view */}
-            <div className="flex gap-4 p-4 bg-muted/40 rounded-xl border">
-              <CurrentSide summary={currentSummary} />
-              <Separator orientation="vertical" className="self-stretch" />
-              <HistoricalSide comparison={comparison} />
+          {manifestDefault && !comparison && (
+            <button
+              onClick={() => setInputValue(manifestDefault)}
+              className="text-[10px] text-blue-500 dark:text-blue-400 hover:underline flex items-center gap-1"
+            >
+              <span>↳ Use suggested baseline:</span>
+              <span className="font-mono">{manifestDefault.slice(0, 16)}…</span>
+            </button>
+          )}
+          {!loading && suggestions.length > 0 && !comparison && (
+            <div className="pt-1">
+              <p className="text-[10px] text-muted-foreground mb-1">Recent same-workflow runs:</p>
+              <div className="flex flex-wrap gap-1.5">
+                {suggestions.map((s) => (
+                  <button
+                    key={s.execution_id}
+                    onClick={() => setInputValue(s.execution_id)}
+                    className="text-[10px] px-2 py-1 rounded border hover:bg-accent text-left"
+                    title={s.execution_id}
+                  >
+                    {s.execution_id.slice(0, 8)}… {s.status}
+                  </button>
+                ))}
+              </div>
             </div>
+          )}
+          {!loading && !suggestionsLoading && suggestions.length === 0 && !comparison && (
+            <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800">
+              No comparable historical execution found for this workflow yet.
+            </p>
+          )}
+          {error && <p className="text-xs text-destructive">{error}</p>}
+        </div>
 
-            {/* Summary */}
-            {comparison.summary && (
-              <div className="space-y-1">
-                <span className="wb-section-header block">Summary</span>
-                <p className="text-sm text-foreground leading-relaxed bg-muted/40 p-3 rounded-lg border">
-                  {comparison.summary}
-                </p>
-              </div>
-            )}
+        {/* Body — side-by-side grid when comparison loaded */}
+        {currentSummary && comparison ? (
+          <div className="flex-1 min-h-0 grid grid-cols-[1fr_1fr] overflow-hidden">
+            {/* Left — Current execution */}
+            <ScrollArea className="border-r">
+              <div className="p-5 space-y-4">
+                {/* Verdict header */}
+                <div className="rounded-xl border p-4 bg-muted/30">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      Comparison Result
+                    </span>
+                    {outcome && (
+                      <Badge variant={outcomeVariant(outcome)} className="uppercase text-[9px]">{outcome}</Badge>
+                    )}
+                  </div>
+                  <p className="text-sm font-semibold">{OUTCOME_LABEL[outcome ?? 'unknown'] ?? outcome}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {currentSummary.dag_name} · {currentSummary.workflow_kind}
+                    {currentSummary.display.run_label ? ` · ${currentSummary.display.run_label}` : ''}
+                  </p>
+                </div>
 
-            {/* Highlights */}
-            {(comparison.highlights ?? []).length > 0 && (
-              <div className="space-y-2">
-                <span className="wb-section-header block">Highlights</span>
-                <ul className="space-y-1">
-                  {comparison.highlights!.map((hl, i) => (
-                    <li key={i} className="flex gap-2 text-sm text-foreground">
-                      <span className="text-blue-400 shrink-0">•</span>
-                      <span>{hl}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+                <ExecutionDetailCard title="CURRENT EXECUTION" summary={currentSummary} variant="current" />
 
-            {/* Caution */}
-            {comparison.caution && (
-              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 flex gap-2">
-                <span className="text-amber-500 text-sm shrink-0">⚠</span>
-                <p className="text-sm text-amber-800 dark:text-amber-300 leading-relaxed">{comparison.caution}</p>
+                {/* Why matched section */}
+                <div className="rounded-xl border p-4 bg-muted/30 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Info className="w-3.5 h-3.5 text-blue-500" />
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      Why this comparison was selected
+                    </span>
+                  </div>
+                  <div className="text-xs text-muted-foreground space-y-1">
+                    <p>
+                      Outcome: <span className="font-semibold text-foreground">{outcome ?? 'unknown'}</span> — {OUTCOME_LABEL[outcome ?? 'unknown'] ?? 'awaiting analysis'}
+                    </p>
+                    {comparison.title && (
+                      <p>
+                        Historical run: <span className="font-medium text-foreground">{comparison.title}</span>
+                      </p>
+                    )}
+                    {comparison.compared_against && (
+                      <p>
+                        Matched against: <span className="font-mono text-[11px]">{comparison.compared_against}</span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Highlights */}
+                {(comparison.highlights ?? []).length > 0 && (
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      Key Differences
+                    </span>
+                    <ul className="space-y-1.5">
+                      {comparison.highlights!.map((hl, i) => (
+                        <li key={i} className="flex gap-2 text-sm rounded-lg border bg-muted/20 px-3 py-2">
+                          <span className="text-blue-400 shrink-0 mt-0.5">■</span>
+                          <span>{hl}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
-            )}
+            </ScrollArea>
+
+            {/* Right — Historical execution */}
+            <ScrollArea>
+              <div className="p-5 space-y-4">
+                <ExecutionDetailCard title="HISTORICAL BASELINE" summary={{
+                  execution_id: comparison.execution_id,
+                  dag_id: '',
+                  dag_name: comparison.title,
+                  status: comparison.outcome === 'match' ? 'completed' : 'completed',
+                  started_at: '',
+                  ended_at: undefined,
+                  duration_ms: 0,
+                  mode: 'execution',
+                  workflow_kind: 'historical',
+                  display: { run_label: comparison.compared_against ?? comparison.execution_id.slice(0, 8) },
+                }} variant="historical" />
+
+                {/* Summary */}
+                {comparison.summary && (
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      Summary
+                    </span>
+                    <p className="text-sm leading-relaxed bg-muted/40 p-3 rounded-lg border">
+                      {comparison.summary}
+                    </p>
+                  </div>
+                )}
+
+                {/* Caution */}
+                {comparison.caution && (
+                  <div className="rounded-xl border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-4 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-500" />
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
+                        Operator Caution
+                      </span>
+                    </div>
+                    <p className="text-sm text-amber-800 dark:text-amber-300 leading-relaxed">
+                      {comparison.caution}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
           </div>
         ) : !loading && (
-          <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2 px-8 text-center py-20">
+          <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-2 px-8 text-center">
+            <GitCompare className="w-8 h-8 opacity-20" />
             <p className="text-sm">Enter a historical execution ID above to compare it against the current run.</p>
+            <p className="text-xs opacity-60">Use one of the suggested recent runs, or paste a known execution UUID.</p>
           </div>
         )}
-      </ScrollArea>
-    </div>
+      </motion.div>
+    </motion.div>
   )
 }

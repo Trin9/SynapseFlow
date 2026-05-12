@@ -8,7 +8,7 @@
 //   Phase D — execution breadcrumb, run label, audit badge, Copy JSON
 import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { Copy, GitCompare, X, RotateCcw, CheckCircle2 } from 'lucide-react'
+import { Copy, GitCompare, RotateCcw, CheckCircle2, ArrowLeft, CheckCircle, XCircle, AlertTriangle } from 'lucide-react'
 import { useGraphStore } from '@/hooks/useGraphStore'
 import { getEpisodeDossier, getEpisodeReplay, getEpisode, postReviewAction, getExecutionSummaryView } from '@/api/episodes'
 import { formatDate } from './_shared'
@@ -302,14 +302,46 @@ export function ForensicDossierDrawer() {
             </BreadcrumbList>
           </Breadcrumb>
 
-          {/* Row 2: Badges + Actions */}
+          {/* Row 2: Verdict badge + confidence + metadata badges + actions */}
           <div className="flex items-center gap-2 flex-wrap">
+            {/* Verdict badge (large, prominent — matches Demo info density) */}
+            {dossier?.display.verdict && (
+              <span className={[
+                'inline-flex items-center gap-1.5 px-3 py-1 rounded-lg border text-xs font-bold uppercase tracking-wider',
+                dossier.display.verdict === 'pass'   && 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700',
+                dossier.display.verdict === 'fail'   && 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700',
+                dossier.display.verdict === 'inconclusive' && 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700',
+                (!['pass','fail','inconclusive'].includes(dossier.display.verdict)) && 'bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700',
+              ].filter(Boolean).join(' ')}>
+                {dossier.display.verdict === 'pass'   && <CheckCircle className="w-3.5 h-3.5" />}
+                {dossier.display.verdict === 'fail'   && <XCircle className="w-3.5 h-3.5" />}
+                {dossier.display.verdict === 'inconclusive' && <AlertTriangle className="w-3.5 h-3.5" />}
+                {dossier.display.verdict_label ?? dossier.display.verdict}
+              </span>
+            )}
+            {/* Confidence — only when verdict exists */}
+            {ep.verdict?.confidence && (
+              <span className={[
+                'text-[10px] font-bold px-2 py-0.5 rounded border',
+                ep.verdict.confidence === 'high'   && 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800',
+                ep.verdict.confidence === 'medium'  && 'bg-amber-50 text-amber-600 border-amber-100 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800',
+                ep.verdict.confidence === 'low'     && 'bg-red-50 text-red-600 border-red-100 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800',
+              ].join(' ')}>
+                {ep.verdict.confidence === 'high' ? 'HIGH' : ep.verdict.confidence === 'medium' ? 'MEDIUM' : 'LOW'} confidence
+              </span>
+            )}
             <Badge variant={ep.episode_type === 'action_verification' ? 'info' : 'default'} className="text-[10px] uppercase tracking-wider">
               {ep.episode_type === 'action_verification' ? 'Action' : 'Investigation'}
             </Badge>
             <Badge variant="outline" className="text-[10px] uppercase">
               {ep.status}
             </Badge>
+            {/* Handles count */}
+            {(ep.handles?.length ?? 0) > 0 && (
+              <span className="text-[10px] text-muted-foreground font-mono">
+                Handles: {ep.handles!.length}
+              </span>
+            )}
             {dossier && (
               <Badge variant="ghost" className="text-[10px] font-mono gap-1">
                 <RotateCcw className="w-2.5 h-2.5" />
@@ -351,7 +383,8 @@ export function ForensicDossierDrawer() {
                   Compare
                 </Button>
                 <Button size="xs" variant="ghost" onClick={() => setSelectedEpisode(null)}>
-                  <X className="w-4 h-4" />
+                  <ArrowLeft className="w-4 h-4" />
+                  Back
                 </Button>
               </TooltipProvider>
             </div>
