@@ -7,7 +7,6 @@ import { NODE_TYPE_INFO } from '@/types'
  * Shows dynamic form fields based on the node type.
  */
 export function ConfigPanel() {
-  const appMode = useGraphStore((s) => s.appMode)
   const selectedNodeId = useGraphStore((s) => s.selectedNodeId)
   const nodes = useGraphStore((s) => s.nodes)
   const updateNodeData = useGraphStore((s) => s.updateNodeData)
@@ -45,10 +44,6 @@ export function ConfigPanel() {
     if (!selectedNodeId) return
     deleteNode(selectedNodeId)
   }, [selectedNodeId, deleteNode])
-
-  if (appMode === 'REVIEW') {
-    return null
-  }
 
   if (!selectedNode) {
     return (

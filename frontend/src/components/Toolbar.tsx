@@ -88,6 +88,8 @@ export function Toolbar() {
       onSave={() => void handleSave()}
       onClear={clearCanvas}
       onRun={() => void handleRun()}
+      onPause={() => {/* TODO: pause execution */}}
+      onStop={() => { setIsRunning(false); setActiveExecutionId(null) }}
       onEnterBuilder={() => {
         if (isReview) exitReviewMode()
         else setAppMode('BUILDER')

@@ -19,6 +19,8 @@ interface ExecutionWorkbenchHeaderProps {
   onSave: () => void
   onClear: () => void
   onRun: () => void
+  onPause: () => void
+  onStop: () => void
   onEnterBuilder: () => void
   onEnterReview: () => void
 }
@@ -42,6 +44,8 @@ export function ExecutionWorkbenchHeader({
   onSave,
   onClear,
   onRun,
+  onPause,
+  onStop,
   onEnterBuilder,
   onEnterReview,
 }: ExecutionWorkbenchHeaderProps) {
@@ -128,8 +132,25 @@ export function ExecutionWorkbenchHeader({
               onClick={onRun}
               disabled={isRunning || nodesCount === 0}
               className="px-2.5 py-1 text-[11px] rounded bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-40 font-medium"
+              title="Run workflow"
             >
-              {isRunning ? 'Running...' : 'Run'}
+              ▶ {isRunning ? 'Running' : 'Run'}
+            </button>
+            <button
+              onClick={onPause}
+              disabled={!isRunning}
+              className="px-2 py-1 text-[11px] rounded border border-slate-700 text-slate-200 hover:bg-slate-800 disabled:opacity-30"
+              title="Pause execution"
+            >
+              ⏸
+            </button>
+            <button
+              onClick={onStop}
+              disabled={!isRunning}
+              className="px-2 py-1 text-[11px] rounded border border-slate-700 text-slate-200 hover:bg-slate-800 disabled:opacity-30"
+              title="Stop execution"
+            >
+              ⏹
             </button>
           </>
         )}
