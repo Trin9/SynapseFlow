@@ -178,7 +178,7 @@ export function Canvas() {
     : edges
 
   return (
-    <div className="flex-1 flex flex-col">
+    <div className="h-full w-full min-h-0 flex flex-col">
       {/* Drilldown breadcrumb bar */}
       {!useEpisodeRendererSwap && isDrilldown && (
         <div className="flex items-center gap-2 px-4 py-1.5 bg-indigo-50 dark:bg-indigo-900/30 border-b border-indigo-200 dark:border-indigo-700 text-xs shrink-0">

@@ -22,6 +22,8 @@ export function TriggerContextPanel({ executionId, replayPercent, onClose }: Tri
     staleTime: 60_000,
   })
 
+  const sections = Array.isArray(data?.sections) ? data.sections : []
+
   return (
     <div className="flex flex-col h-full wb-animate-slide-right bg-card">
       {/* Header */}
@@ -62,13 +64,15 @@ export function TriggerContextPanel({ executionId, replayPercent, onClose }: Tri
               )}
 
               {/* Sections */}
-              {data.sections.map((section, si) => (
+              {sections.map((section, si) => (
                 <div key={si}>
                   <div className="wb-section-header mb-1 px-0.5">{section.title}</div>
                   <div className="rounded border overflow-hidden">
-                    {section.fields.map((field, fi) => {
+                    {(Array.isArray(section.fields) ? section.fields : []).map((field, fi) => {
                       const dimmed =
                         replayPercent !== undefined &&
+                        Array.isArray(field.range) &&
+                        typeof field.range[0] === 'number' &&
                         field.range[0] > replayPercent
                       return (
                         <div

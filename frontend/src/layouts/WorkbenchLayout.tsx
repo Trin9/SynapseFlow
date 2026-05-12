@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, BookOpen, History } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
@@ -30,7 +30,16 @@ export function WorkbenchLayout() {
   const setShowTriggerCtx = useGraphStore((s) => s.setShowTriggerCtx)
 
   const isReview = appMode === 'REVIEW'
-  const showRightHistory = isReview || showHistory
+  const showRightHistory = showHistory
+  const wasReviewRef = useRef(isReview)
+
+  useEffect(() => {
+    const justEnteredReview = !wasReviewRef.current && isReview
+    if (justEnteredReview && !showHistory) {
+      setShowHistory(true)
+    }
+    wasReviewRef.current = isReview
+  }, [isReview, setShowHistory, showHistory])
 
   const { data: bootstrapExecutions = [] } = useQuery({
     queryKey: ['review-bootstrap-executions'],
@@ -135,11 +144,9 @@ export function WorkbenchLayout() {
                   <History className="w-3.5 h-3.5" />
                   Execution History
                 </span>
-                {!isReview && (
-                  <Button size="xs" variant="ghost" onClick={() => setShowHistory(false)} className="h-6 w-6 p-0">
-                    <X className="w-3.5 h-3.5" />
-                  </Button>
-                )}
+                <Button size="xs" variant="ghost" onClick={() => setShowHistory(false)} className="h-6 w-6 p-0">
+                  <X className="w-3.5 h-3.5" />
+                </Button>
               </div>
               <div className="h-[calc(100%-40px)] overflow-hidden">
                 <ExecutionHistory />
