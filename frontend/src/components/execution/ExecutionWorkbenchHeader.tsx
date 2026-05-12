@@ -78,18 +78,19 @@ export function ExecutionWorkbenchHeader({
           <button
             onClick={onEnterReview}
             className={`px-2.5 py-1 text-[11px] rounded transition-colors ${
-              isReview ? 'bg-blue-500 text-white' : 'text-slate-300 hover:bg-slate-800'
+              isReview ? 'bg-slate-200 text-slate-900' : 'text-slate-300 hover:bg-slate-800'
             }`}
           >
             Execution
           </button>
         </div>
 
-        {isReview && (
+        <div className="w-[86px]">
           <button
             onClick={onToggleTriggerCtx}
+            disabled={!isReview}
             className={`px-2 py-1 text-[11px] rounded border transition-colors flex items-center gap-1 ${
-              showTriggerCtx
+              isReview && showTriggerCtx
                 ? 'text-amber-300 border-amber-700 bg-amber-500/10'
                 : 'border-slate-700 text-slate-300 hover:bg-slate-800'
             }`}
@@ -98,7 +99,7 @@ export function ExecutionWorkbenchHeader({
             <AlignLeft className="w-3 h-3" />
             <span className="hidden sm:inline">Trigger</span>
           </button>
-        )}
+        </div>
       </div>
 
       {/* Right: actions */}
@@ -109,51 +110,48 @@ export function ExecutionWorkbenchHeader({
           </span>
         )}
 
-        {!isReview && (
-          <>
-            <button
-              onClick={() => setShowLibrary(!showLibrary)}
-              className={`px-2 py-1 text-[11px] rounded border transition-colors ${
-                showLibrary
-                  ? 'bg-slate-200 text-slate-900 border-slate-200'
-                  : 'border-slate-700 text-slate-200 hover:bg-slate-800'
-              }`}
-            >
-              Load
-            </button>
-            <button
-              onClick={onClear}
-              disabled={isRunning || nodesCount === 0}
-              className="px-2 py-1 text-[11px] rounded border border-slate-700 text-slate-200 hover:bg-slate-800 disabled:opacity-40"
-            >
-              Clear
-            </button>
-            <button
-              onClick={onRun}
-              disabled={isRunning || nodesCount === 0}
-              className="px-2.5 py-1 text-[11px] rounded bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-40 font-medium"
-              title="Run workflow"
-            >
-              ▶ {isRunning ? 'Running' : 'Run'}
-            </button>
-            <button
-              onClick={onPause}
-              disabled={!isRunning}
-              className="px-2 py-1 text-[11px] rounded border border-slate-700 text-slate-200 hover:bg-slate-800 disabled:opacity-30"
-              title="Pause execution"
-            >
-              ⏸
-            </button>
-            <button
-              onClick={onStop}
-              disabled={!isRunning}
-              className="px-2 py-1 text-[11px] rounded border border-slate-700 text-slate-200 hover:bg-slate-800 disabled:opacity-30"
-              title="Stop execution"
-            >
-              ⏹
-            </button>
-          </>
-        )}
+        <button
+          onClick={() => setShowLibrary(!showLibrary)}
+          disabled={isReview}
+          className={`px-2 py-1 text-[11px] rounded border transition-colors ${
+            showLibrary && !isReview
+              ? 'bg-slate-200 text-slate-900 border-slate-200'
+              : 'border-slate-700 text-slate-200 hover:bg-slate-800'
+          } disabled:opacity-30 disabled:cursor-not-allowed`}
+        >
+          Load
+        </button>
+        <button
+          onClick={onClear}
+          disabled={isReview || isRunning || nodesCount === 0}
+          className="px-2 py-1 text-[11px] rounded border border-slate-700 text-slate-200 hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          Clear
+        </button>
+        <button
+          onClick={onRun}
+          disabled={isReview || isRunning || nodesCount === 0}
+          className="px-2.5 py-1 text-[11px] rounded bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-30 disabled:cursor-not-allowed font-medium"
+          title="Run workflow"
+        >
+          ▶ {isRunning ? 'Running' : 'Run'}
+        </button>
+        <button
+          onClick={onPause}
+          disabled={isReview || !isRunning}
+          className="px-2 py-1 text-[11px] rounded border border-slate-700 text-slate-200 hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed"
+          title="Pause execution"
+        >
+          ⏸
+        </button>
+        <button
+          onClick={onStop}
+          disabled={isReview || !isRunning}
+          className="px-2 py-1 text-[11px] rounded border border-slate-700 text-slate-200 hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed"
+          title="Stop execution"
+        >
+          ⏹
+        </button>
 
         <button
           onClick={onSave}

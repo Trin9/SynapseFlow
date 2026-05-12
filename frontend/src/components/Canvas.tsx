@@ -156,7 +156,9 @@ export function Canvas() {
     return edgesOut
   }, [orderedEpisodeSummaries, useEpisodeRendererSwap])
 
-  const visibleNodes: FlowNode[] = useEpisodeRendererSwap
+  const hasEpisodeOverview = useEpisodeRendererSwap && reviewSwapNodes.length > 0
+
+  const visibleNodes: FlowNode[] = hasEpisodeOverview
     ? reviewSwapNodes
     : isDrilldown
     ? nodes.filter((n) => {
@@ -166,7 +168,7 @@ export function Canvas() {
       })
     : nodes
 
-  const visibleEdges: FlowEdge[] = useEpisodeRendererSwap
+  const visibleEdges: FlowEdge[] = hasEpisodeOverview
     ? reviewSwapEdges
     : isDrilldown
     ? (() => {
@@ -180,7 +182,7 @@ export function Canvas() {
   return (
     <div className="h-full w-full min-h-0 flex flex-col">
       {/* Drilldown breadcrumb bar */}
-      {!useEpisodeRendererSwap && isDrilldown && (
+      {!hasEpisodeOverview && isDrilldown && (
         <div className="flex items-center gap-2 px-4 py-1.5 bg-indigo-50 dark:bg-indigo-900/30 border-b border-indigo-200 dark:border-indigo-700 text-xs shrink-0">
           <button
             onClick={exitDrilldown}

@@ -20,6 +20,7 @@ export function WorkbenchLayout() {
   const appMode = useGraphStore((s) => s.appMode)
   const activeExecutionId = useGraphStore((s) => s.activeExecutionId)
   const selectedEpisode = useGraphStore((s) => s.selectedEpisode)
+  const selectedNodeId = useGraphStore((s) => s.selectedNodeId)
   const showHistory = useGraphStore((s) => s.showHistory)
   const setShowHistory = useGraphStore((s) => s.setShowHistory)
   const showLibrary = useGraphStore((s) => s.showLibrary)
@@ -95,7 +96,7 @@ export function WorkbenchLayout() {
           {isReview && activeExecutionId && <ProcessTraceTray />}
         </div>
 
-        {!isReview && (
+        {!isReview && selectedNodeId && (
           <div className="w-[320px] border-l shrink-0 bg-card">
             <ConfigPanel />
           </div>
