@@ -101,9 +101,13 @@ export type FlowEdge = Edge
 export type AppMode = 'BUILDER' | 'REVIEW'
 
 interface GraphState {
-  // Layout feature flag (Phase 0 / Phase A)
+  // Layout — always Workbench (Classic/Workbench toggle removed in Batch 3).
   useWorkbenchLayout: boolean
-  setUseWorkbenchLayout: (enabled: boolean) => void
+
+  // Trigger Context sidebar visibility (moved from WorkbenchLayout local state to store
+  // so the header bar can toggle it without prop drilling through App).
+  showTriggerCtx: boolean
+  setShowTriggerCtx: (show: boolean) => void
 
   // Mode toggle
   appMode: AppMode
@@ -190,10 +194,11 @@ function generateNodeId(): string {
 }
 
 export const useGraphStore = create<GraphState>((set, get) => ({
-  // Workbench is the default layout — aligns with FRONTEND_ALIGNMENT_PLAN Phase A
-  // (execution workspace as first visual subject, not DAG editor).
+  // Always Workbench — Classic layout has been removed (Batch 3 simplification).
   useWorkbenchLayout: true,
-  setUseWorkbenchLayout: (enabled) => set({ useWorkbenchLayout: enabled }),
+
+  showTriggerCtx: true,
+  setShowTriggerCtx: (show) => set({ showTriggerCtx: show }),
 
   appMode: 'BUILDER',
   setAppMode: (mode) => set({ appMode: mode }),

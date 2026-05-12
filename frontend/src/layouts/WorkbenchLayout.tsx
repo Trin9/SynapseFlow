@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, BookOpen, History, AlignLeft } from 'lucide-react'
+import { X, BookOpen, History } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { Canvas } from '@/components/Canvas'
 import { Sidebar } from '@/components/Sidebar'
@@ -15,8 +15,6 @@ import { TriggerContextPanel } from '@/components/execution/TriggerContextPanel'
 import { ExecutionNarrativeBanner } from '@/components/execution/ExecutionNarrativeBanner'
 import { ProcessTraceTray } from '@/components/execution/ProcessTraceTray'
 import { Button } from '@/components/ui/button'
-import { Separator } from '@/components/ui/separator'
-import { Badge } from '@/components/ui/badge'
 
 export function WorkbenchLayout() {
   const appMode = useGraphStore((s) => s.appMode)
@@ -28,8 +26,8 @@ export function WorkbenchLayout() {
   const setShowLibrary = useGraphStore((s) => s.setShowLibrary)
   const setActiveExecutionId = useGraphStore((s) => s.setActiveExecutionId)
   const useWorkbenchLayout = useGraphStore((s) => s.useWorkbenchLayout)
-
-  const [showTriggerCtx, setShowTriggerCtx] = useState(true)
+  const showTriggerCtx = useGraphStore((s) => s.showTriggerCtx)
+  const setShowTriggerCtx = useGraphStore((s) => s.setShowTriggerCtx)
 
   const isReview = appMode === 'REVIEW'
   const showRightHistory = isReview || showHistory
@@ -53,31 +51,6 @@ export function WorkbenchLayout() {
 
   return (
     <div className="flex-1 min-h-0 flex flex-col bg-background">
-      {/* Workbench header bar */}
-      <div className="h-10 px-4 border-b bg-background/95 backdrop-blur flex items-center gap-2 shrink-0">
-        <span className="text-sm font-semibold text-foreground">Execution Workbench</span>
-        <Separator orientation="vertical" className="h-4" />
-        <Badge variant={isReview ? 'info' : 'secondary'} className="text-[10px]">
-          {isReview ? 'Review' : 'Builder'}
-        </Badge>
-        {isReview && activeExecutionId && (
-          <code className="ml-1 text-[10px] font-mono px-2 py-0.5 rounded bg-muted text-muted-foreground">
-            {activeExecutionId.slice(0, 12)}
-          </code>
-        )}
-        {isReview && activeExecutionId && (
-          <Button
-            size="xs"
-            variant={showTriggerCtx ? 'secondary' : 'ghost'}
-            className={`ml-auto text-[10px] ${showTriggerCtx ? 'text-amber-700 bg-amber-50 border-amber-200 dark:text-amber-300 dark:bg-amber-900/20 dark:border-amber-700' : ''}`}
-            onClick={() => setShowTriggerCtx((v) => !v)}
-          >
-            <AlignLeft className="w-3 h-3" />
-            Trigger Context
-          </Button>
-        )}
-      </div>
-
       <div className="flex-1 min-h-0 flex overflow-hidden relative bg-background">
         {!showLibrary && !isReview && (
           <div className="w-[260px] border-r shrink-0 bg-card">
