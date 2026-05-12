@@ -186,7 +186,9 @@ function generateNodeId(): string {
 }
 
 export const useGraphStore = create<GraphState>((set, get) => ({
-  useWorkbenchLayout: false,
+  // Workbench is the default layout — aligns with FRONTEND_ALIGNMENT_PLAN Phase A
+  // (execution workspace as first visual subject, not DAG editor).
+  useWorkbenchLayout: true,
   setUseWorkbenchLayout: (enabled) => set({ useWorkbenchLayout: enabled }),
 
   appMode: 'BUILDER',
