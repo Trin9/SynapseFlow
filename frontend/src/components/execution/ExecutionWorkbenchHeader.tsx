@@ -1,10 +1,7 @@
-import { AlignLeft } from 'lucide-react'
-
 interface ExecutionWorkbenchHeaderProps {
   isReview: boolean
   workflowName: string
   setWorkflowName: (name: string) => void
-  activeExecutionId: string | null
   error: string | null
   theme: 'light' | 'dark'
   toggleTheme: () => void
@@ -12,8 +9,6 @@ interface ExecutionWorkbenchHeaderProps {
   setShowLibrary: (show: boolean) => void
   showHistory: boolean
   setShowHistory: (show: boolean) => void
-  showTriggerCtx: boolean
-  onToggleTriggerCtx: () => void
   nodesCount: number
   isRunning: boolean
   onSave: () => void
@@ -29,7 +24,6 @@ export function ExecutionWorkbenchHeader({
   isReview,
   workflowName,
   setWorkflowName,
-  activeExecutionId,
   error,
   theme,
   toggleTheme,
@@ -37,8 +31,6 @@ export function ExecutionWorkbenchHeader({
   setShowLibrary,
   showHistory,
   setShowHistory,
-  showTriggerCtx,
-  onToggleTriggerCtx,
   nodesCount,
   isRunning,
   onSave,
@@ -57,14 +49,9 @@ export function ExecutionWorkbenchHeader({
         <span className="text-[11px] text-slate-200 truncate max-w-[180px] hidden sm:block">
           {workflowName || 'Untitled Workflow'}
         </span>
-        {isReview && activeExecutionId && (
-          <span className="text-[10px] text-cyan-200 bg-cyan-500/15 border border-cyan-500/30 px-1.5 py-0.5 rounded font-mono">
-            {activeExecutionId.slice(0, 12)}
-          </span>
-        )}
       </div>
 
-      {/* Center: Mode toggle + Trigger Context */}
+      {/* Center: Mode toggle */}
       <div className="ml-4 flex items-center gap-1.5">
         <div className="flex items-center bg-slate-900 border border-slate-700 rounded-md p-0.5">
           <button
@@ -82,22 +69,6 @@ export function ExecutionWorkbenchHeader({
             }`}
           >
             Execution
-          </button>
-        </div>
-
-        <div className="w-[86px]">
-          <button
-            onClick={onToggleTriggerCtx}
-            disabled={!isReview}
-            className={`px-2 py-1 text-[11px] rounded border transition-colors flex items-center gap-1 ${
-              isReview && showTriggerCtx
-                ? 'text-amber-300 border-amber-700 bg-amber-500/10'
-                : 'border-slate-700 text-slate-300 hover:bg-slate-800'
-            }`}
-            title={showTriggerCtx ? 'Hide trigger context' : 'Show trigger context'}
-          >
-            <AlignLeft className="w-3 h-3" />
-            <span className="hidden sm:inline">Trigger</span>
           </button>
         </div>
       </div>
@@ -172,14 +143,13 @@ export function ExecutionWorkbenchHeader({
           History
         </button>
 
-        {!isReview && (
-          <input
-            type="text"
-            value={workflowName}
-            onChange={(e) => setWorkflowName(e.target.value)}
-            className="px-2 py-1 text-[11px] rounded bg-slate-900 border border-slate-700 text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-400 w-36"
-          />
-        )}
+        <input
+          type="text"
+          value={workflowName}
+          disabled={isReview}
+          onChange={(e) => setWorkflowName(e.target.value)}
+          className="px-2 py-1 text-[11px] rounded bg-slate-900 border border-slate-700 text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-400 w-36 disabled:opacity-55"
+        />
 
         <button
           onClick={toggleTheme}

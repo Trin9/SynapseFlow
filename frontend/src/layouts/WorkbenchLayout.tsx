@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, BookOpen, History } from 'lucide-react'
+import { X, BookOpen, History, AlignLeft } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { Canvas } from '@/components/Canvas'
 import { Sidebar } from '@/components/Sidebar'
@@ -42,6 +42,12 @@ export function WorkbenchLayout() {
     wasReviewRef.current = isReview
   }, [isReview, setShowHistory, showHistory])
 
+  useEffect(() => {
+    if (!isReview && selectedNodeId && showHistory) {
+      setShowHistory(false)
+    }
+  }, [isReview, selectedNodeId, setShowHistory, showHistory])
+
   const { data: bootstrapExecutions = [] } = useQuery({
     queryKey: ['review-bootstrap-executions'],
     enabled: useWorkbenchLayout && isReview && !activeExecutionId,
@@ -78,6 +84,19 @@ export function WorkbenchLayout() {
         )}
 
         <div className="flex-1 min-w-0 flex flex-col">
+          {isReview && activeExecutionId && (
+            <div className="h-9 border-b bg-card px-3 flex items-center justify-end shrink-0">
+              <Button
+                size="xs"
+                variant={showTriggerCtx ? 'secondary' : 'ghost'}
+                className={`text-[10px] ${showTriggerCtx ? 'text-amber-700 bg-amber-50 border-amber-200 dark:text-amber-300 dark:bg-amber-900/20 dark:border-amber-700' : ''}`}
+                onClick={() => setShowTriggerCtx(!showTriggerCtx)}
+              >
+                <AlignLeft className="w-3 h-3" />
+                {showTriggerCtx ? 'Hide Trigger' : 'Show Trigger'}
+              </Button>
+            </div>
+          )}
           {isReview && activeExecutionId && <EpisodeOverviewStrip executionId={activeExecutionId} />}
           {isReview && !activeExecutionId && (
             <div className="h-16 border-b bg-card px-4 py-2 flex items-center text-sm text-muted-foreground">

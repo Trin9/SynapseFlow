@@ -30,11 +30,15 @@ export function Canvas() {
   const onConnect = useGraphStore((s) => s.onConnect)
   const addNode = useGraphStore((s) => s.addNode)
   const setSelectedNodeId = useGraphStore((s) => s.setSelectedNodeId)
+  const setShowHistory = useGraphStore((s) => s.setShowHistory)
 
   // SuperNode drilldown
   const viewLevel = useGraphStore((s) => s.viewLevel)
   const activeSuperNodeId = useGraphStore((s) => s.activeSuperNodeId)
   const exitDrilldown = useGraphStore((s) => s.exitDrilldown)
+
+  // In REVIEW mode the canvas is read-only: no drag, no connect, no select.
+  const isReview = appMode === 'REVIEW'
 
   const reactFlowRef = useRef<ReactFlowInstance<FlowNode, FlowEdge> | null>(null)
 
@@ -58,24 +62,25 @@ export function Canvas() {
         y: event.clientY,
       })
 
+      if (!isReview) setShowHistory(false)
       addNode(type, position)
     },
-    [addNode]
+    [addNode, isReview, setShowHistory]
   )
 
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: FlowNode) => {
+      if (!isReview) setShowHistory(false)
       setSelectedNodeId(node.id)
     },
-    [setSelectedNodeId]
+    [isReview, setSelectedNodeId, setShowHistory]
   )
 
   const onPaneClick = useCallback(() => {
+    if (!isReview) setShowHistory(false)
     setSelectedNodeId(null)
-  }, [setSelectedNodeId])
+  }, [isReview, setSelectedNodeId, setShowHistory])
 
-  // In REVIEW mode the canvas is read-only: no drag, no connect, no select.
-  const isReview = appMode === 'REVIEW'
   const useEpisodeRendererSwap = isReview && useWorkbenchLayout && !!activeExecutionId
 
   const { data: episodeSummaries = [], isLoading: episodesLoading } = useQuery({

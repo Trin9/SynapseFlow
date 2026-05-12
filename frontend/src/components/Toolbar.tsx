@@ -20,7 +20,6 @@ export function Toolbar() {
   const setIsRunning = useGraphStore((s) => s.setIsRunning)
   const setExecutionResult = useGraphStore((s) => s.setExecutionResult)
   const setActiveExecutionId = useGraphStore((s) => s.setActiveExecutionId)
-  const activeExecutionId = useGraphStore((s) => s.activeExecutionId)
   const toDAGConfig = useGraphStore((s) => s.toDAGConfig)
   const clearCanvas = useGraphStore((s) => s.clearCanvas)
   const nodes = useGraphStore((s) => s.nodes)
@@ -28,8 +27,6 @@ export function Toolbar() {
   const setShowHistory = useGraphStore((s) => s.setShowHistory)
   const showLibrary = useGraphStore((s) => s.showLibrary)
   const setShowLibrary = useGraphStore((s) => s.setShowLibrary)
-  const showTriggerCtx = useGraphStore((s) => s.showTriggerCtx)
-  const setShowTriggerCtx = useGraphStore((s) => s.setShowTriggerCtx)
 
   const { theme, toggleTheme } = useTheme()
   const { pollingError } = useExecutionPoller()
@@ -73,7 +70,6 @@ export function Toolbar() {
       isReview={isReview}
       workflowName={workflowName}
       setWorkflowName={setWorkflowName}
-      activeExecutionId={activeExecutionId}
       error={error}
       theme={theme}
       toggleTheme={toggleTheme}
@@ -81,8 +77,6 @@ export function Toolbar() {
       setShowLibrary={setShowLibrary}
       showHistory={showHistory}
       setShowHistory={setShowHistory}
-      showTriggerCtx={showTriggerCtx}
-      onToggleTriggerCtx={() => setShowTriggerCtx(!showTriggerCtx)}
       nodesCount={nodes.length}
       isRunning={isRunning}
       onSave={() => void handleSave()}
