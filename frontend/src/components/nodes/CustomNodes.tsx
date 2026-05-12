@@ -242,8 +242,8 @@ function EpisodeOverviewNodeBase({ data, selected, id }: NodeProps<FlowNode>) {
       <Handle type="target" position={Position.Left} className="!h-3 !w-3 !border-zinc-500 !bg-zinc-600" />
       <div
         className={cn(
-          'relative w-[340px] rounded-xl border-2 p-4 backdrop-blur-sm transition-all duration-200',
-          'bg-[#0d1117]/95 text-zinc-100',
+          'relative w-[360px] rounded-2xl border-2 p-4 backdrop-blur-sm transition-all duration-200',
+          'bg-[#0c1220]/95 text-zinc-100',
           statusBorderColor(status),
           selected && 'ring-2 ring-cyan-500/60 ring-offset-2 ring-offset-[#0a0e17]',
           'shadow-xl shadow-black/50'
@@ -254,14 +254,14 @@ function EpisodeOverviewNodeBase({ data, selected, id }: NodeProps<FlowNode>) {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <Layers className="h-4 w-4 text-cyan-400 shrink-0" />
-              <span className="font-medium text-sm truncate">{data.label}</span>
+              <span className="font-semibold text-[15px] truncate tracking-tight">{data.label}</span>
             </div>
             {data.action && (
-              <p className="mt-1 text-xs text-zinc-500 line-clamp-2">{data.action}</p>
+              <p className="mt-1 text-[12px] text-zinc-400 line-clamp-2">{data.action}</p>
             )}
           </div>
           <span className={cn(
-            'shrink-0 text-[10px] font-bold uppercase px-2 py-0.5 rounded border',
+            'shrink-0 text-[10px] font-bold uppercase px-2 py-1 rounded-md border',
             verdictTone(verdict)
           )}>
             {verdictLabel}
@@ -269,18 +269,18 @@ function EpisodeOverviewNodeBase({ data, selected, id }: NodeProps<FlowNode>) {
         </div>
 
         {/* Metrics grid */}
-        <div className="mt-3 grid grid-cols-3 gap-2 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
+        <div className="mt-3 grid grid-cols-3 gap-2 rounded-xl border border-zinc-700/80 bg-zinc-900/50 p-3.5">
           <div className="flex flex-col items-center gap-0.5">
-            <span className="text-[10px] text-zinc-500">Confidence</span>
-            <span className="text-xs font-semibold text-zinc-300 capitalize">{confidence}</span>
+            <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Confidence</span>
+            <span className="text-[13px] font-semibold text-zinc-200 capitalize">{confidence}</span>
           </div>
           <div className="flex flex-col items-center gap-0.5">
-            <span className="text-[10px] text-zinc-500">Evidence</span>
-            <span className="text-xs font-semibold text-zinc-300">{evidenceCount}</span>
+            <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Evidence</span>
+            <span className="text-[13px] font-semibold text-zinc-200">{evidenceCount}</span>
           </div>
           <div className="flex flex-col items-center gap-0.5">
-            <span className="text-[10px] text-zinc-500">Handles</span>
-            <span className="text-xs font-semibold text-zinc-300">{handleCount}</span>
+            <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Handles</span>
+            <span className="text-[13px] font-semibold text-zinc-200">{handleCount}</span>
           </div>
         </div>
 

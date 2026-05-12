@@ -20,5 +20,6 @@ type EpisodeSummaryView struct {
 	Confidence           models.EpisodeConfidence `json:"confidence,omitempty"`
 	EvidenceCount        int                      `json:"evidence_count"`
 	HandleCount          int                      `json:"handle_count"`
+	NodeIDs              []string                 `json:"node_ids,omitempty"`
 	DefaultReplayPercent int                      `json:"default_replay_percent"`
 }

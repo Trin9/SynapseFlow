@@ -33,12 +33,26 @@ func ExecutionToSummary(exec *models.Execution) *workspaceView.ExecutionSummaryV
 
 // EpisodeToSummary converts an Episode to an EpisodeSummaryView.
 func EpisodeToSummary(ep *models.Episode) workspaceView.EpisodeSummaryView {
+	nodeIDs := make([]string, 0, len(ep.Evidence))
+	seenNode := make(map[string]struct{}, len(ep.Evidence))
+	for _, ev := range ep.Evidence {
+		if ev.NodeID == "" {
+			continue
+		}
+		if _, exists := seenNode[ev.NodeID]; exists {
+			continue
+		}
+		seenNode[ev.NodeID] = struct{}{}
+		nodeIDs = append(nodeIDs, ev.NodeID)
+	}
+
 	sv := workspaceView.EpisodeSummaryView{
 		EpisodeID:     ep.ID,
 		Label:         string(ep.EpisodeType),
 		Status:        ep.Status,
 		EvidenceCount: len(ep.Evidence),
 		HandleCount:   len(ep.Handles),
+		NodeIDs:       nodeIDs,
 	}
 	switch ep.Status {
 	case domainEpisode.EpisodeStatusConverged.ToModel(), domainEpisode.EpisodeStatusEscalated.ToModel(), domainEpisode.EpisodeStatusFailed.ToModel():

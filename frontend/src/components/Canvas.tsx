@@ -121,7 +121,7 @@ export function Canvas() {
 
   const reviewSwapNodes = useMemo<FlowNode[]>(() => {
     if (!useEpisodeRendererSwap) return []
-    const drilldownChildIds = nodes
+    const fallbackChildIds = nodes
       .filter((n) => n.data.nodeType !== 'super')
       .map((n) => n.id)
 
@@ -143,7 +143,9 @@ export function Canvas() {
           confidence: sv.confidence,
           child_preview: sceneManifest?.childPreview ?? [],
         },
-        childNodeIds: drilldownChildIds,
+        childNodeIds: Array.isArray(sv.node_ids) && sv.node_ids.length > 0
+          ? sv.node_ids
+          : fallbackChildIds,
       },
     }))
   }, [nodes, orderedEpisodeSummaries, sceneManifest?.childPreview, useEpisodeRendererSwap])

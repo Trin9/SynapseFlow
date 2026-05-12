@@ -230,9 +230,9 @@ func TestEpisodeLifecycle_ListEpisodes_EmptyForUnknownExecution(t *testing.T) {
 	}
 }
 
-// TestEpisodeLifecycle_NoEpisodeCreated_WhenEpisodeTypeAbsent verifies that a
-// DAG without episode_type in metadata does NOT create an Episode.
-func TestEpisodeLifecycle_NoEpisodeCreated_WhenEpisodeTypeAbsent(t *testing.T) {
+// TestEpisodeLifecycle_DefaultEpisodeCreated_WhenEpisodeTypeAbsent verifies
+// that a DAG without episode_type still creates a default Episode.
+func TestEpisodeLifecycle_DefaultEpisodeCreated_WhenEpisodeTypeAbsent(t *testing.T) {
 	s := NewServer()
 	dag := map[string]interface{}{
 		"name": "no-episode-dag",
@@ -257,8 +257,13 @@ func TestEpisodeLifecycle_NoEpisodeCreated_WhenEpisodeTypeAbsent(t *testing.T) {
 	var body map[string]interface{}
 	_ = json.Unmarshal(listRec.Body.Bytes(), &body)
 	eps, _ := body["episodes"].([]interface{})
-	if len(eps) != 0 {
-		t.Errorf("expected 0 episodes for DAG without episode_type, got %d", len(eps))
+	if len(eps) != 1 {
+		t.Fatalf("expected 1 default episode for DAG without episode_type, got %d", len(eps))
+	}
+	ep, _ := eps[0].(map[string]interface{})
+	epType, _ := ep["episode_type"].(string)
+	if epType != string(domainEpisode.EpisodeTypeActionVerification.ToModel()) {
+		t.Fatalf("expected default episode_type action_verification, got %q", epType)
 	}
 }
 

@@ -50,6 +50,7 @@ export interface EpisodeSummaryView {
   confidence?: EpisodeConfidence
   evidence_count: number
   handle_count: number
+  node_ids?: string[]
   default_replay_percent: number
 }
 

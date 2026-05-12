@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	domainEpisode "github.com/Trin9/SynapseFlow/backend/internal/domain/episode"
@@ -127,31 +128,27 @@ func (s *Service) StartExecution(dag *models.DAGConfig, initialState *models.Glo
 		logger.L().Errorw("failed to create execution", "execution_id", execID, "source", source, "error", err)
 	}
 
-	if epType, ok := dag.Metadata["episode_type"]; ok && epType != "" && s.Episodes != nil {
-		domainType := domainEpisode.EpisodeType(epType)
-		if !domainType.IsValid() {
-			logger.L().Warnw("invalid episode_type metadata; skipping auto-create episode", "exec_id", execID, "episode_type", epType)
+	if s.Episodes != nil {
+		domainType := inferEpisodeType(dag)
+		ep := &models.Episode{
+			ID:            generateID(),
+			ExecID:        execID,
+			EpisodeType:   domainType.ToModel(),
+			Status:        domainEpisode.EpisodeStatusPending.ToModel(),
+			Trigger:       &models.EpisodeTrigger{Type: domainEpisode.EpisodeTriggerManual.ToModel()},
+			LoopGuard:     models.EpisodeLoopGuard{MaxIterations: 10},
+			SchemaVersion: 1,
+			CreatedAt:     time.Now().UTC(),
+			UpdatedAt:     time.Now().UTC(),
+		}
+		if initialState == nil {
+			initialState = models.NewGlobalState()
+		}
+		if err := s.Episodes.Create(context.Background(), ep); err != nil {
+			logger.L().Warnw("failed to auto-create episode", "exec_id", execID, "error", err)
 		} else {
-			ep := &models.Episode{
-				ID:            generateID(),
-				ExecID:        execID,
-				EpisodeType:   domainType.ToModel(),
-				Status:        domainEpisode.EpisodeStatusPending.ToModel(),
-				Trigger:       &models.EpisodeTrigger{Type: domainEpisode.EpisodeTriggerManual.ToModel()},
-				LoopGuard:     models.EpisodeLoopGuard{MaxIterations: 10},
-				SchemaVersion: 1,
-				CreatedAt:     time.Now().UTC(),
-				UpdatedAt:     time.Now().UTC(),
-			}
-			if initialState == nil {
-				initialState = models.NewGlobalState()
-			}
-			if err := s.Episodes.Create(context.Background(), ep); err != nil {
-				logger.L().Warnw("failed to auto-create episode", "exec_id", execID, "error", err)
-			} else {
-				initialState.Set("__episode_id__", ep.ID)
-				logger.L().Infow("auto-created episode", "exec_id", execID, "episode_id", ep.ID, "type", epType)
-			}
+			initialState.Set("__episode_id__", ep.ID)
+			logger.L().Infow("auto-created episode", "exec_id", execID, "episode_id", ep.ID, "type", ep.EpisodeType)
 		}
 	}
 
@@ -247,6 +244,31 @@ func (s *Service) StartExecution(dag *models.DAGConfig, initialState *models.Glo
 	}(execID, dag)
 
 	return exec
+}
+
+func inferEpisodeType(dag *models.DAGConfig) domainEpisode.EpisodeType {
+	if dag != nil && dag.Metadata != nil {
+		if epType := dag.Metadata["episode_type"]; epType != "" {
+			domainType := domainEpisode.EpisodeType(epType)
+			if domainType.IsValid() {
+				return domainType
+			}
+			logger.L().Warnw("invalid episode_type metadata; fallback to inferred type", "episode_type", epType, "dag_id", dag.ID)
+		}
+		if workflowKind := strings.TrimSpace(strings.ToLower(dag.Metadata["workflow_kind"])); workflowKind == "investigation" {
+			return domainEpisode.EpisodeTypeInvestigationStep
+		}
+	}
+
+	haystack := ""
+	if dag != nil {
+		haystack = strings.ToLower(dag.ID + " " + dag.Name)
+	}
+	if strings.Contains(haystack, "investigation") || strings.Contains(haystack, "incident") || strings.Contains(haystack, "unreachable") {
+		return domainEpisode.EpisodeTypeInvestigationStep
+	}
+
+	return domainEpisode.EpisodeTypeActionVerification
 }
 
 // ResumeExecution resumes a suspended execution and returns the updated running execution.
