@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, BookOpen, History, AlignLeft } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
@@ -25,6 +25,7 @@ export function WorkbenchLayout() {
   const setShowHistory = useGraphStore((s) => s.setShowHistory)
   const showLibrary = useGraphStore((s) => s.showLibrary)
   const setShowLibrary = useGraphStore((s) => s.setShowLibrary)
+  const isRunning = useGraphStore((s) => s.isRunning)
   const setActiveExecutionId = useGraphStore((s) => s.setActiveExecutionId)
   const useWorkbenchLayout = useGraphStore((s) => s.useWorkbenchLayout)
   const showTriggerCtx = useGraphStore((s) => s.showTriggerCtx)
@@ -32,16 +33,6 @@ export function WorkbenchLayout() {
 
   const isReview = appMode === 'REVIEW'
   const showRightHistory = showHistory
-  const wasReviewRef = useRef(isReview)
-
-  useEffect(() => {
-    const justEnteredReview = !wasReviewRef.current && isReview
-    if (justEnteredReview && !showHistory) {
-      setShowHistory(true)
-    }
-    wasReviewRef.current = isReview
-  }, [isReview, setShowHistory, showHistory])
-
   useEffect(() => {
     if (!isReview && selectedNodeId && showHistory) {
       setShowHistory(false)
@@ -68,7 +59,7 @@ export function WorkbenchLayout() {
   return (
     <div className="flex-1 min-h-0 flex flex-col bg-background">
       <div className="flex-1 min-h-0 flex overflow-hidden relative bg-background">
-        {!showLibrary && !isReview && (
+        {!showLibrary && !isReview && !isRunning && (
           <div className="w-[260px] border-r shrink-0 bg-card">
             <Sidebar />
           </div>

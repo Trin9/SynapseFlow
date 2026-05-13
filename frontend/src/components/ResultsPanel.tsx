@@ -16,11 +16,13 @@ function formatMaybeJSON(s: string): string {
  * Bottom panel that displays execution results after a workflow run.
  */
 export function ResultsPanel() {
+  const appMode = useGraphStore((s) => s.appMode)
   const executionResult = useGraphStore((s) => s.executionResult)
   const setExecutionResult = useGraphStore((s) => s.setExecutionResult)
   const setActiveExecutionId = useGraphStore((s) => s.setActiveExecutionId)
   const setIsRunning = useGraphStore((s) => s.setIsRunning)
 
+  if (appMode === 'REVIEW') return null
   if (!executionResult) return null
 
   return (
@@ -60,10 +62,11 @@ export function ResultsPanel() {
 
       {/* Node results */}
       <div className="divide-y divide-gray-100 dark:divide-gray-800">
-        {(executionResult.results ?? []).map((result) => {
+        {(executionResult.results ?? []).map((result, idx) => {
           const info = NODE_TYPE_INFO[result.node_type]
+          const rowKey = `${result.node_id}:${idx}`
           return (
-            <div key={result.node_id} className="px-4 py-2">
+            <div key={rowKey} className="px-4 py-2">
               <details className="group" open={result.status !== 'success'}>
                 <summary className="list-none cursor-pointer select-none">
                   <div className="flex items-center gap-2">

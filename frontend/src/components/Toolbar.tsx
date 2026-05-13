@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { useGraphStore } from '@/hooks/useGraphStore'
-import { useExecutionPoller } from '@/hooks/useExecutionPoller'
 import { useDAGPersistence } from '@/hooks/useDAGPersistence'
 import { useTheme } from '@/contexts/ThemeContext'
 import { runWorkflow, getExecutionNodes } from '@/api/client'
@@ -13,6 +12,7 @@ import { ExecutionWorkbenchHeader } from '@/components/execution/ExecutionWorkbe
 export function Toolbar() {
   const appMode = useGraphStore((s) => s.appMode)
   const setAppMode = useGraphStore((s) => s.setAppMode)
+  const enterReviewMode = useGraphStore((s) => s.enterReviewMode)
   const exitReviewMode = useGraphStore((s) => s.exitReviewMode)
   const workflowName = useGraphStore((s) => s.workflowName)
   const setWorkflowName = useGraphStore((s) => s.setWorkflowName)
@@ -25,16 +25,16 @@ export function Toolbar() {
   const nodes = useGraphStore((s) => s.nodes)
   const showHistory = useGraphStore((s) => s.showHistory)
   const setShowHistory = useGraphStore((s) => s.setShowHistory)
+  const setShowTriggerCtx = useGraphStore((s) => s.setShowTriggerCtx)
   const showLibrary = useGraphStore((s) => s.showLibrary)
   const setShowLibrary = useGraphStore((s) => s.setShowLibrary)
 
   const { theme, toggleTheme } = useTheme()
-  const { pollingError } = useExecutionPoller()
   const { handleSave, saveLoadError } = useDAGPersistence()
 
   const [runError, setRunError] = useState<string | null>(null)
 
-  const error = runError ?? pollingError ?? saveLoadError
+  const error = runError ?? saveLoadError
 
   const handleRun = async () => {
     const dag = toDAGConfig()
@@ -51,6 +51,8 @@ export function Toolbar() {
 
     try {
       const start = await runWorkflow(dag)
+      enterReviewMode(start.execution_id)
+      setIsRunning(true)
       setActiveExecutionId(start.execution_id)
       const snapshot = await getExecutionNodes(start.execution_id)
       setExecutionResult(snapshot)
@@ -88,7 +90,11 @@ export function Toolbar() {
         if (isReview) exitReviewMode()
         else setAppMode('BUILDER')
       }}
-      onEnterReview={() => setAppMode('REVIEW')}
+      onEnterReview={() => {
+        setShowHistory(false)
+        setShowTriggerCtx(false)
+        enterReviewMode()
+      }}
     />
   )
 }

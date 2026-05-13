@@ -1,11 +1,12 @@
 import { useCallback, type DragEvent } from 'react'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ReactFlow,
   Background,
   Controls,
   MiniMap,
   type ReactFlowInstance,
+  type Viewport,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
@@ -23,6 +24,7 @@ export function Canvas() {
   const appMode = useGraphStore((s) => s.appMode)
   const activeExecutionId = useGraphStore((s) => s.activeExecutionId)
   const useWorkbenchLayout = useGraphStore((s) => s.useWorkbenchLayout)
+  const isRunning = useGraphStore((s) => s.isRunning)
   const nodes = useGraphStore((s) => s.nodes)
   const edges = useGraphStore((s) => s.edges)
   const onNodesChange = useGraphStore((s) => s.onNodesChange)
@@ -41,6 +43,18 @@ export function Canvas() {
   const isReview = appMode === 'REVIEW'
 
   const reactFlowRef = useRef<ReactFlowInstance<FlowNode, FlowEdge> | null>(null)
+  const [lockedViewport, setLockedViewport] = useState<Viewport | null>(null)
+
+  useEffect(() => {
+    const shouldLockViewport = isReview || isRunning
+    if (!shouldLockViewport) {
+      setLockedViewport(null)
+      return
+    }
+    if (!lockedViewport && reactFlowRef.current) {
+      setLockedViewport(reactFlowRef.current.getViewport())
+    }
+  }, [isReview, isRunning, lockedViewport])
 
   const onDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
     event.preventDefault()
@@ -121,9 +135,6 @@ export function Canvas() {
 
   const reviewSwapNodes = useMemo<FlowNode[]>(() => {
     if (!useEpisodeRendererSwap) return []
-    const fallbackChildIds = nodes
-      .filter((n) => n.data.nodeType !== 'super')
-      .map((n) => n.id)
 
     return orderedEpisodeSummaries.map((sv, idx) => ({
       id: `episode-${sv.episode_id}`,
@@ -145,10 +156,10 @@ export function Canvas() {
         },
         childNodeIds: Array.isArray(sv.node_ids) && sv.node_ids.length > 0
           ? sv.node_ids
-          : fallbackChildIds,
+          : [],
       },
     }))
-  }, [nodes, orderedEpisodeSummaries, sceneManifest?.childPreview, useEpisodeRendererSwap])
+  }, [orderedEpisodeSummaries, sceneManifest?.childPreview, useEpisodeRendererSwap])
 
   const reviewSwapEdges = useMemo<FlowEdge[]>(() => {
     if (!useEpisodeRendererSwap) return []
@@ -170,14 +181,16 @@ export function Canvas() {
 
   const hasEpisodeOverview = useEpisodeRendererSwap && reviewSwapNodes.length > 0
 
-  const visibleNodes: FlowNode[] = hasEpisodeOverview
-    ? isDrilldown
-      ? (() => {
-          const episodeNode = reviewSwapNodes.find((n) => n.id === activeSuperNodeId)
-          const childSet = new Set(episodeNode?.data.childNodeIds ?? [])
-          return nodes.filter((n) => childSet.has(n.id))
-        })()
-      : reviewSwapNodes
+  const visibleNodes: FlowNode[] = useEpisodeRendererSwap
+    ? hasEpisodeOverview
+      ? isDrilldown
+        ? (() => {
+            const episodeNode = reviewSwapNodes.find((n) => n.id === activeSuperNodeId)
+            const childSet = new Set(episodeNode?.data.childNodeIds ?? [])
+            return nodes.filter((n) => childSet.has(n.id))
+          })()
+        : reviewSwapNodes
+      : []
     : isDrilldown
       ? nodes.filter((n) => {
           if (n.id === activeSuperNodeId) return true
@@ -186,14 +199,16 @@ export function Canvas() {
         })
       : nodes
 
-  const visibleEdges: FlowEdge[] = hasEpisodeOverview
-    ? isDrilldown
-      ? (() => {
-          const episodeNode = reviewSwapNodes.find((n) => n.id === activeSuperNodeId)
-          const childSet = new Set(episodeNode?.data.childNodeIds ?? [])
-          return edges.filter((e) => childSet.has(e.source) && childSet.has(e.target))
-        })()
-      : reviewSwapEdges
+  const visibleEdges: FlowEdge[] = useEpisodeRendererSwap
+    ? hasEpisodeOverview
+      ? isDrilldown
+        ? (() => {
+            const episodeNode = reviewSwapNodes.find((n) => n.id === activeSuperNodeId)
+            const childSet = new Set(episodeNode?.data.childNodeIds ?? [])
+            return edges.filter((e) => childSet.has(e.source) && childSet.has(e.target))
+          })()
+        : reviewSwapEdges
+      : []
     : isDrilldown
       ? (() => {
           const superNode = nodes.find((s) => s.id === activeSuperNodeId)
@@ -241,10 +256,15 @@ export function Canvas() {
           onPaneClick={isReview ? undefined : onPaneClick}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
+          viewport={lockedViewport ?? undefined}
           nodesDraggable={!isReview}
           nodesConnectable={!isReview}
           elementsSelectable={!isReview}
-          fitView
+          panOnDrag={!isReview && !isRunning}
+          zoomOnScroll={!isReview && !isRunning}
+          zoomOnPinch={!isReview && !isRunning}
+          zoomOnDoubleClick={!isReview && !isRunning}
+          fitView={!isReview && !isRunning}
           snapToGrid={!isReview}
           snapGrid={[15, 15]}
           defaultEdgeOptions={{
@@ -267,9 +287,9 @@ export function Canvas() {
               <p className="text-sm text-gray-400 dark:text-gray-500">Loading episode overview...</p>
             </div>
           )}
-          {isReview && visibleNodes.length === 0 && !episodesLoading && (
+          {isReview && useEpisodeRendererSwap && visibleNodes.length === 0 && !episodesLoading && (
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <p className="text-sm text-gray-400 dark:text-gray-500">Load a workflow to view its execution state.</p>
+              <p className="text-sm text-gray-400 dark:text-gray-500">No episode summaries available for this execution yet.</p>
             </div>
           )}
         </ReactFlow>

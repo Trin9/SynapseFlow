@@ -223,10 +223,10 @@ function ExecutionDetail({ execId }: ExecutionDetailProps) {
           {(nodes?.results ?? []).length === 0 && (
             <p className="text-xs text-gray-400 dark:text-gray-500">No node results yet.</p>
           )}
-          {(nodes?.results ?? []).map((r) => {
+          {(nodes?.results ?? []).map((r, idx) => {
             const info = NODE_TYPE_INFO[r.node_type as keyof typeof NODE_TYPE_INFO]
             return (
-              <div key={r.node_id} className="border border-gray-100 dark:border-gray-800 rounded">
+              <div key={`${r.node_id}:${idx}`} className="border border-gray-100 dark:border-gray-800 rounded">
                 <details>
                   <summary className="list-none cursor-pointer select-none">
                     <div className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800">

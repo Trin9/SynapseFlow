@@ -74,7 +74,7 @@ export function MemoryRecallInset({ execId, episodeId }: MemoryRecallInsetProps)
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
   const setActiveExecutionId = useGraphStore((s) => s.setActiveExecutionId)
-  const setAppMode = useGraphStore((s) => s.setAppMode)
+  const enterReviewMode = useGraphStore((s) => s.enterReviewMode)
   const setSelectedEpisode = useGraphStore((s) => s.setSelectedEpisode)
 
   useEffect(() => {
@@ -99,7 +99,7 @@ export function MemoryRecallInset({ execId, episodeId }: MemoryRecallInsetProps)
   function handleJump(sourceExecId: string) {
     setSelectedEpisode(null)
     setActiveExecutionId(sourceExecId)
-    setAppMode('REVIEW')
+    enterReviewMode(sourceExecId)
   }
 
   return (

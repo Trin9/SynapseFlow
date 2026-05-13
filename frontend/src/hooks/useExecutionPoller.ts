@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getExecutionNodes } from '@/api/client'
 import { useGraphStore } from '@/hooks/useGraphStore'
@@ -17,7 +17,21 @@ export function useExecutionPoller() {
   const setExecutionResult = useGraphStore((s) => s.setExecutionResult)
   const setIsRunning = useGraphStore((s) => s.setIsRunning)
 
-  const TERMINAL = new Set(['completed', 'failed', 'timeout'])
+  const TERMINAL = new Set(['completed', 'failed', 'timeout', 'suspended'])
+  const lastSnapshotSigRef = useRef<string | null>(null)
+
+  const snapshotSig = (payload: {
+    execution_id: string
+    status: string
+    duration_ms?: number
+    results?: Array<{ node_id: string; status: string; duration_ms?: number }>
+  }) => {
+    const results = payload.results ?? []
+    const tail = results.length > 0
+      ? `${results[results.length - 1].node_id}:${results[results.length - 1].status}:${results[results.length - 1].duration_ms ?? 0}`
+      : 'none'
+    return `${payload.execution_id}|${payload.status}|${payload.duration_ms ?? 0}|${results.length}|${tail}`
+  }
 
   const { data, error } = useQuery({
     queryKey: ['execution-nodes', activeExecutionId],
@@ -25,14 +39,22 @@ export function useExecutionPoller() {
     enabled: !!activeExecutionId && isRunning,
     refetchInterval: (query) => {
       const status = query.state.data?.status
-      return status && TERMINAL.has(status) ? false : 500
+      return status && TERMINAL.has(status) ? false : 1200
     },
   })
 
   // Sync latest snapshot into Zustand store
   useEffect(() => {
+    lastSnapshotSigRef.current = null
+  }, [activeExecutionId])
+
+  useEffect(() => {
     if (!data) return
-    setExecutionResult(data)
+    const sig = snapshotSig(data)
+    if (lastSnapshotSigRef.current !== sig) {
+      setExecutionResult(data)
+      lastSnapshotSigRef.current = sig
+    }
     if (TERMINAL.has(data.status)) {
       setIsRunning(false)
     }

@@ -113,7 +113,7 @@ interface GraphState {
   appMode: AppMode
   setAppMode: (mode: AppMode) => void
   /** Switch to REVIEW mode and set the execution being reviewed. */
-  enterReviewMode: (executionId: string) => void
+  enterReviewMode: (executionId?: string | null) => void
   /** Return to BUILDER mode, clearing any review-specific state. */
   exitReviewMode: () => void
 
@@ -197,7 +197,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   // Always Workbench — Classic layout has been removed (Batch 3 simplification).
   useWorkbenchLayout: true,
 
-  showTriggerCtx: true,
+  showTriggerCtx: false,
   setShowTriggerCtx: (show) => set({ showTriggerCtx: show }),
 
   appMode: 'BUILDER',
@@ -206,12 +206,13 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   enterReviewMode: (executionId) => {
     set({
       appMode: 'REVIEW',
-      activeExecutionId: executionId,
+      activeExecutionId: executionId ?? get().activeExecutionId,
       // Reset any in-progress run state so the canvas shows review colours cleanly.
       isRunning: false,
-      // CR-016: open history panel and collapse library; clear any leftover node selection.
-      showHistory: true,
+      // Keep side drawers closed by default when entering review.
+      showHistory: false,
       showLibrary: false,
+      showTriggerCtx: false,
       selectedNodeId: null,
       // B2: close any open dossier from a previous execution so it doesn't show stale data.
       selectedEpisode: null,
@@ -310,9 +311,8 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   nodeStatuses: {},
   setIsRunning: (running) => {
     if (running) {
-      // Best-effort: mark all nodes as running until results arrive.
       const next: Record<string, 'idle' | 'running' | 'success' | 'error' | 'skipped'> = {}
-      for (const n of get().nodes) next[n.id] = 'running'
+      for (const n of get().nodes) next[n.id] = get().nodeStatuses[n.id] ?? 'idle'
       set({ isRunning: true, nodeStatuses: next })
       return
     }
@@ -352,10 +352,22 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       return
     }
 
-    const next: Record<string, 'idle' | 'running' | 'success' | 'error' | 'skipped'> = {}
-    const base: 'idle' | 'running' = result.status === 'running' ? 'running' : 'idle'
-    for (const n of get().nodes) next[n.id] = base
+    const prev = get().nodeStatuses
+    const next: Record<string, 'idle' | 'running' | 'success' | 'error' | 'skipped'> = { ...prev }
+
+    // Keep statuses sticky between polling snapshots; only update nodes that
+    // are present in the latest results payload.
+    for (const n of get().nodes) {
+      if (!next[n.id]) next[n.id] = 'idle'
+    }
     for (const r of (result.results ?? [])) next[r.node_id] = r.status
+
+    // Once execution is terminal, clear any leftover running marks.
+    if (result.status !== 'running') {
+      for (const [id, st] of Object.entries(next)) {
+        if (st === 'running') next[id] = 'idle'
+      }
+    }
 
     set({ executionResult: result, nodeStatuses: next })
   },

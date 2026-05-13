@@ -35,7 +35,7 @@ function BaseNode({ data, selected, id }: NodeProps<FlowNode>) {
         : status === 'skipped'
           ? 'opacity-60 border-gray-300 dark:border-gray-600'
           : status === 'running'
-            ? 'border-blue-400 ring-1 ring-blue-200 dark:ring-blue-900 animate-pulse'
+            ? 'border-blue-400 ring-1 ring-blue-200 dark:ring-blue-900'
             : ''
 
   return (
