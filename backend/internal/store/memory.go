@@ -267,6 +267,7 @@ func cloneDAG(dag *models.DAGConfig) *models.DAGConfig {
 	}
 	clone.Nodes = append([]models.Node(nil), dag.Nodes...)
 	clone.Edges = append([]models.Edge(nil), dag.Edges...)
+	clone.Episodes = append([]models.DesignEpisode(nil), dag.Episodes...)
 	return &clone
 }
 

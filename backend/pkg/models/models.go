@@ -33,10 +33,22 @@ type DAGConfig struct {
 	Name        string            `json:"name"`
 	Description string            `json:"description,omitempty"`
 	Metadata    map[string]string `json:"metadata,omitempty"`
+	Episodes    []DesignEpisode   `json:"episodes,omitempty"`
 	Nodes       []Node            `json:"nodes"`
 	Edges       []Edge            `json:"edges"`
 	CreatedAt   time.Time         `json:"created_at,omitempty"`
 	UpdatedAt   time.Time         `json:"updated_at,omitempty"`
+}
+
+// DesignEpisode is a design-time episode specification attached to DAGConfig.
+// It defines intent and node grouping before runtime-derived evidence appears.
+type DesignEpisode struct {
+	ID                string                 `json:"id"`
+	Label             string                 `json:"label"`
+	Summary           string                 `json:"summary,omitempty"`
+	ExpectedBehaviors []string               `json:"expected_behaviors,omitempty"`
+	NodeIDs           []string               `json:"node_ids,omitempty"`
+	Config            map[string]interface{} `json:"config,omitempty"`
 }
 
 // Node represents a single node in the DAG.

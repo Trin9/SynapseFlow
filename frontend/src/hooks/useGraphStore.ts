@@ -9,7 +9,15 @@ import {
   applyEdgeChanges,
   addEdge,
 } from '@xyflow/react'
-import type { NodeType, AnyNodeType, DAGConfig, WorkflowNode, WorkflowEdge, ExecutionNodesResponse } from '@/types'
+import type {
+  NodeType,
+  AnyNodeType,
+  DAGConfig,
+  DesignEpisodeSpec,
+  WorkflowNode,
+  WorkflowEdge,
+  ExecutionNodesResponse,
+} from '@/types'
 import type { FlowNodeData } from '@/components/nodes/CustomNodes'
 import type { Episode } from '@/types/episode'
 
@@ -116,31 +124,51 @@ function sanitizeChildNodeIds(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === 'string' && item.length > 0)
 }
 
-function parseDesignEpisodeNodes(metadata?: Record<string, string>): FlowNode[] {
-  const raw = metadata?.[DESIGN_EPISODE_METADATA_KEY]
-  if (!raw) return []
+function deserializeDesignEpisodeSpecs(specs?: DesignEpisodeSpec[]): SerializedDesignEpisode[] {
+  if (!Array.isArray(specs)) return []
+  return specs
+    .filter((item): item is DesignEpisodeSpec => !!item && typeof item.id === 'string' && typeof item.label === 'string')
+    .map((item) => ({
+      id: item.id,
+      label: item.label,
+      summary: typeof item.summary === 'string' ? item.summary : '',
+      config: item.config ?? {
+        expected_behaviors: Array.isArray(item.expected_behaviors) ? item.expected_behaviors : [],
+      },
+      childNodeIds: Array.isArray(item.node_ids) ? item.node_ids : [],
+      position: undefined,
+    }))
+}
 
-  try {
-    const parsed = JSON.parse(raw) as SerializedDesignEpisode[]
-    if (!Array.isArray(parsed)) return []
+function parseDesignEpisodeNodes(dag: DAGConfig): FlowNode[] {
+  let parsed: SerializedDesignEpisode[] = deserializeDesignEpisodeSpecs(dag.episodes)
 
-    return parsed
-      .filter((item): item is SerializedDesignEpisode => !!item && typeof item.id === 'string' && typeof item.label === 'string')
-      .map((item, idx) => ({
-        id: item.id,
-        type: 'superNode',
-        position: item.position ?? { x: 120 + idx * 380, y: 120 },
-        data: {
-          label: item.label,
-          nodeType: 'super',
-          action: typeof item.summary === 'string' ? item.summary : '',
-          config: item.config ?? {},
-          childNodeIds: sanitizeChildNodeIds(item.childNodeIds),
-        },
-      }))
-  } catch {
-    return []
+  if (parsed.length === 0) {
+    const raw = dag.metadata?.[DESIGN_EPISODE_METADATA_KEY]
+    if (raw) {
+      try {
+        const legacy = JSON.parse(raw) as SerializedDesignEpisode[]
+        if (Array.isArray(legacy)) parsed = legacy
+      } catch {
+        parsed = []
+      }
+    }
   }
+
+  return parsed
+    .filter((item): item is SerializedDesignEpisode => !!item && typeof item.id === 'string' && typeof item.label === 'string')
+    .map((item, idx) => ({
+      id: item.id,
+      type: 'superNode',
+      position: item.position ?? { x: 120 + idx * 380, y: 120 },
+      data: {
+        label: item.label,
+        nodeType: 'super',
+        action: typeof item.summary === 'string' ? item.summary : '',
+        config: item.config ?? {},
+        childNodeIds: sanitizeChildNodeIds(item.childNodeIds),
+      },
+    }))
 }
 
 function serializeDesignEpisodeNodes(nodes: FlowNode[]): string {
@@ -155,6 +183,25 @@ function serializeDesignEpisodeNodes(nodes: FlowNode[]): string {
       position: node.position,
     }))
   return JSON.stringify(serialized)
+}
+
+function buildDesignEpisodeSpecs(nodes: FlowNode[]): DesignEpisodeSpec[] {
+  return nodes
+    .filter((node) => node.data.nodeType === 'super')
+    .map((node) => {
+      const config = node.data.config ?? {}
+      const expectedBehaviors = Array.isArray(config.expected_behaviors)
+        ? config.expected_behaviors.filter((item): item is string => typeof item === 'string')
+        : []
+      return {
+        id: node.id,
+        label: node.data.label,
+        summary: node.data.action,
+        expected_behaviors: expectedBehaviors,
+        node_ids: sanitizeChildNodeIds(node.data.childNodeIds),
+        config,
+      }
+    })
 }
 
 interface GraphState {
@@ -461,6 +508,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       id: workflowId ?? undefined,
       name: workflowName,
       metadata,
+      episodes: buildDesignEpisodeSpecs(nodes),
       nodes: workflowNodes,
       edges: workflowEdges,
     }
@@ -492,7 +540,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     // Apply BFS-based layout so fan-out nodes don't overlap, then append
     // design-time episode shells restored from DAG metadata.
     const layoutNodes = computeDAGLayout(rawNodes, dagEdges)
-    const nodes = [...layoutNodes, ...parseDesignEpisodeNodes(dag.metadata)]
+    const nodes = [...layoutNodes, ...parseDesignEpisodeNodes(dag)]
 
     set({
       nodes,

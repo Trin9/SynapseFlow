@@ -60,6 +60,37 @@ func (s *PostgresStores) MemoryStore() *PostgresExperienceStore {
 
 type PostgresDAGStore struct{ db *sql.DB }
 
+const designEpisodeMetadataKey = "synapse.design_episode_specs"
+
+func metadataWithDesignEpisodes(base map[string]string, episodes []models.DesignEpisode) (map[string]string, error) {
+	merged := make(map[string]string, len(base)+1)
+	for k, v := range base {
+		merged[k] = v
+	}
+	if len(episodes) == 0 {
+		delete(merged, designEpisodeMetadataKey)
+		return merged, nil
+	}
+	b, err := json.Marshal(episodes)
+	if err != nil {
+		return nil, err
+	}
+	merged[designEpisodeMetadataKey] = string(b)
+	return merged, nil
+}
+
+func parseDesignEpisodesFromMetadata(metadata map[string]string) ([]models.DesignEpisode, error) {
+	raw := strings.TrimSpace(metadata[designEpisodeMetadataKey])
+	if raw == "" {
+		return nil, nil
+	}
+	var episodes []models.DesignEpisode
+	if err := json.Unmarshal([]byte(raw), &episodes); err != nil {
+		return nil, err
+	}
+	return episodes, nil
+}
+
 func (s *PostgresDAGStore) Create(ctx context.Context, dag *models.DAGConfig) error {
 	nodesJSON, err := json.Marshal(dag.Nodes)
 	if err != nil {
@@ -69,7 +100,11 @@ func (s *PostgresDAGStore) Create(ctx context.Context, dag *models.DAGConfig) er
 	if err != nil {
 		return err
 	}
-	metadataJSON, err := json.Marshal(dag.Metadata)
+	metadata, err := metadataWithDesignEpisodes(dag.Metadata, dag.Episodes)
+	if err != nil {
+		return err
+	}
+	metadataJSON, err := json.Marshal(metadata)
 	if err != nil {
 		return err
 	}
@@ -89,7 +124,11 @@ func (s *PostgresDAGStore) Update(ctx context.Context, dag *models.DAGConfig) er
 	if err != nil {
 		return err
 	}
-	metadataJSON, err := json.Marshal(dag.Metadata)
+	metadata, err := metadataWithDesignEpisodes(dag.Metadata, dag.Episodes)
+	if err != nil {
+		return err
+	}
+	metadataJSON, err := json.Marshal(metadata)
 	if err != nil {
 		return err
 	}
@@ -467,6 +506,11 @@ func scanDAG(row scanner) (*models.DAGConfig, error) {
 			return nil, err
 		}
 	}
+	episodes, err := parseDesignEpisodesFromMetadata(dag.Metadata)
+	if err != nil {
+		return nil, err
+	}
+	dag.Episodes = episodes
 	if err := json.Unmarshal(nodesJSON, &dag.Nodes); err != nil {
 		return nil, err
 	}

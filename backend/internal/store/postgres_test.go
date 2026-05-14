@@ -55,6 +55,15 @@ func TestPostgresDAGStore(t *testing.T) {
 		ID:          "test-dag-" + uniqueSuffix(),
 		Name:        "Integration Test DAG",
 		Description: "created by TestPostgresDAGStore",
+		Episodes: []models.DesignEpisode{
+			{
+				ID:                "ep_design_bootstrap",
+				Label:             "Bootstrap Episode",
+				Summary:           "Design-time bootstrap checks",
+				ExpectedBehaviors: []string{"frontend is reachable", "product discovery returns product id"},
+				NodeIDs:           []string{"n1"},
+			},
+		},
 		Nodes: []models.Node{
 			{ID: "n1", Name: "Node 1", Type: models.NodeTypeScript, Action: "echo hello"},
 		},
@@ -77,9 +86,13 @@ func TestPostgresDAGStore(t *testing.T) {
 	if got.Name != dag.Name {
 		t.Errorf("Name mismatch: got %q want %q", got.Name, dag.Name)
 	}
+	if len(got.Episodes) != 1 || got.Episodes[0].ID != "ep_design_bootstrap" {
+		t.Fatalf("episodes not restored correctly: %+v", got.Episodes)
+	}
 
 	// Update
 	dag.Name = "Updated DAG"
+	dag.Episodes[0].Summary = "Updated design episode summary"
 	dag.UpdatedAt = time.Now().UTC()
 	if err := s.DAGs.Update(ctx, dag); err != nil {
 		t.Fatalf("Update: %v", err)
@@ -87,6 +100,9 @@ func TestPostgresDAGStore(t *testing.T) {
 	got, _ = s.DAGs.Get(ctx, dag.ID)
 	if got.Name != "Updated DAG" {
 		t.Errorf("updated Name mismatch: got %q", got.Name)
+	}
+	if len(got.Episodes) != 1 || got.Episodes[0].Summary != "Updated design episode summary" {
+		t.Fatalf("updated episodes mismatch: %+v", got.Episodes)
 	}
 
 	// List

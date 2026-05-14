@@ -22,12 +22,22 @@ export interface WorkflowEdge {
   condition?: string
 }
 
+export interface DesignEpisodeSpec {
+  id: string
+  label: string
+  summary?: string
+  expected_behaviors?: string[]
+  node_ids?: string[]
+  config?: Record<string, unknown>
+}
+
 // Matches backend models.DAGConfig
 export interface DAGConfig {
   id?: string
   name: string
   description?: string
   metadata?: Record<string, string>
+  episodes?: DesignEpisodeSpec[]
   nodes: WorkflowNode[]
   edges: WorkflowEdge[]
 }
