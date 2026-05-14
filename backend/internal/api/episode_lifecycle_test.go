@@ -400,3 +400,46 @@ func TestBuildEpisodeDossier_AppliesHumanReviewDisplayProjection(t *testing.T) {
 		t.Fatalf("expected dossier verdict_label to reflect abort, got %q", dossier.Display.VerdictLabel)
 	}
 }
+
+func TestBuildEpisodeDossier_PrefersDesignExpectedBehavior(t *testing.T) {
+	ep := &models.Episode{
+		ID:          "ep-design-expected-001",
+		ExecID:      "exec-design-expected-001",
+		EpisodeType: domainEpisode.EpisodeTypeActionVerification.ToModel(),
+		Status:      domainEpisode.EpisodeStatusConverged.ToModel(),
+		ActionContext: &models.ActionContext{
+			ActionName: "Storefront Ready Episode",
+			ActionType: "design_episode",
+			ActionInput: map[string]interface{}{
+				"expected_behaviors": []interface{}{
+					"storefront health endpoint returns 200",
+					"product discovery yields at least one product id",
+				},
+			},
+		},
+		Verdict: &models.EpisodeVerdict{
+			Result:       models.EpisodeResultPass,
+			Confidence:   models.EpisodeConfidenceHigh,
+			Conclusion:   "Design expectations are satisfied.",
+			CausalChain:  []string{"fallback causal chain item"},
+			Recommendations: []string{"keep monitoring"},
+		},
+	}
+
+	dossier := buildEpisodeDossier(ep, nil, nil)
+	if len(dossier.ExpectedBehavior) != 2 {
+		t.Fatalf("expected 2 design expected_behavior entries, got %d", len(dossier.ExpectedBehavior))
+	}
+	if dossier.ExpectedBehavior[0].SourceType != "sop" {
+		t.Fatalf("expected source_type=sop, got %q", dossier.ExpectedBehavior[0].SourceType)
+	}
+	if dossier.ExpectedBehavior[0].SourceLabel != "Verified SOP" {
+		t.Fatalf("expected source_label=Verified SOP, got %q", dossier.ExpectedBehavior[0].SourceLabel)
+	}
+	if dossier.ExpectedBehavior[0].Body != "storefront health endpoint returns 200" {
+		t.Fatalf("unexpected first expected behavior body: %q", dossier.ExpectedBehavior[0].Body)
+	}
+	if dossier.ExpectedBehavior[0].ID == "causal_0" {
+		t.Fatalf("expected design-time behavior to override AI causal fallback")
+	}
+}

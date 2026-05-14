@@ -539,8 +539,8 @@ func buildEpisodeDossier(ep *models.Episode, facts []workspaceView.RuntimeFactVi
 		}
 	}
 
-	var expectedBehaviors []workspaceView.ExpectedBehaviorView
-	if ep.Verdict != nil {
+	expectedBehaviors := buildDesignExpectedBehaviors(ep, commonFocusKey)
+	if len(expectedBehaviors) == 0 && ep.Verdict != nil {
 		for i, link := range ep.Verdict.CausalChain {
 			expectedBehaviors = append(expectedBehaviors, workspaceView.ExpectedBehaviorView{
 				ID:          fmt.Sprintf("causal_%d", i),
@@ -580,6 +580,68 @@ func buildEpisodeDossier(ep *models.Episode, facts []workspaceView.RuntimeFactVi
 		Handles:          ep.Handles,
 		MemoryRecalls:    recalls,
 		HumanAuditTrail:  ep.HumanInterventions,
+	}
+}
+
+func buildDesignExpectedBehaviors(ep *models.Episode, focusKey string) []workspaceView.ExpectedBehaviorView {
+	if ep == nil {
+		return nil
+	}
+
+	expected := make([]string, 0)
+	if ep.ActionContext != nil {
+		expected = append(expected, normalizeStringList(ep.ActionContext.ActionInput["expected_behaviors"])...)
+	}
+	if len(expected) == 0 && ep.InvestigationContext != nil {
+		expected = append(expected, ep.InvestigationContext.KnownSignals...)
+	}
+	if len(expected) == 0 {
+		return nil
+	}
+
+	out := make([]workspaceView.ExpectedBehaviorView, 0, len(expected))
+	for i, item := range expected {
+		trimmed := strings.TrimSpace(item)
+		if trimmed == "" {
+			continue
+		}
+		out = append(out, workspaceView.ExpectedBehaviorView{
+			ID:           fmt.Sprintf("design_expected_%d", i),
+			Title:        fmt.Sprintf("Expected Behavior %d", i+1),
+			Body:         trimmed,
+			FocusKey:     focusKey,
+			SourceType:   "sop",
+			SourceLabel:  "Verified SOP",
+			SourceDetail: "Defined in Design mode episode specification.",
+		})
+	}
+	return out
+}
+
+func normalizeStringList(raw interface{}) []string {
+	switch v := raw.(type) {
+	case []string:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			if s := strings.TrimSpace(item); s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	case []interface{}:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			s, ok := item.(string)
+			if !ok {
+				continue
+			}
+			if s = strings.TrimSpace(s); s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	default:
+		return nil
 	}
 }
 
