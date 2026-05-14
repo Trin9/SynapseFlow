@@ -27,6 +27,7 @@ export interface DAGConfig {
   id?: string
   name: string
   description?: string
+  metadata?: Record<string, string>
   nodes: WorkflowNode[]
   edges: WorkflowEdge[]
 }

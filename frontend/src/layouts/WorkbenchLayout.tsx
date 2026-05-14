@@ -10,7 +10,6 @@ import { WorkflowLibrary } from '@/components/library/WorkflowLibrary'
 import { ForensicDossierDrawer } from '@/components/dossier/ForensicDossierDrawer'
 import { listExecutionSummaries, listExecutionSummariesByDAG } from '@/api/episodes'
 import { useGraphStore } from '@/hooks/useGraphStore'
-import { EpisodeOverviewStrip } from '@/components/execution/EpisodeOverviewCard'
 import { TriggerContextPanel } from '@/components/execution/TriggerContextPanel'
 import { ExecutionNarrativeBanner } from '@/components/execution/ExecutionNarrativeBanner'
 import { ProcessTraceTray } from '@/components/execution/ProcessTraceTray'
@@ -18,6 +17,7 @@ import { Button } from '@/components/ui/button'
 
 export function WorkbenchLayout() {
   const appMode = useGraphStore((s) => s.appMode)
+  const workflowId = useGraphStore((s) => s.workflowId)
   const activeExecutionId = useGraphStore((s) => s.activeExecutionId)
   const selectedEpisode = useGraphStore((s) => s.selectedEpisode)
   const selectedNodeId = useGraphStore((s) => s.selectedNodeId)
@@ -43,7 +43,9 @@ export function WorkbenchLayout() {
     queryKey: ['review-bootstrap-executions'],
     enabled: useWorkbenchLayout && isReview && !activeExecutionId,
     queryFn: async () => {
-      const preferred = await listExecutionSummariesByDAG('boutique_checkout_consistency_audit')
+      const preferred = workflowId
+        ? await listExecutionSummariesByDAG(workflowId)
+        : []
       if (preferred.length > 0) return preferred
       return listExecutionSummaries()
     },
@@ -88,7 +90,6 @@ export function WorkbenchLayout() {
               </Button>
             </div>
           )}
-          {isReview && activeExecutionId && <EpisodeOverviewStrip executionId={activeExecutionId} />}
           {isReview && !activeExecutionId && (
             <div className="h-16 border-b bg-card px-4 py-2 flex items-center text-sm text-muted-foreground">
               Loading focused episode context...

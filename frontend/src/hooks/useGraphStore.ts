@@ -100,6 +100,63 @@ export type FlowEdge = Edge
 
 export type AppMode = 'BUILDER' | 'REVIEW'
 
+const DESIGN_EPISODE_METADATA_KEY = 'synapse.design_episode_specs'
+
+interface SerializedDesignEpisode {
+  id: string
+  label: string
+  summary?: string
+  config?: Record<string, unknown>
+  childNodeIds?: string[]
+  position?: { x: number; y: number }
+}
+
+function sanitizeChildNodeIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is string => typeof item === 'string' && item.length > 0)
+}
+
+function parseDesignEpisodeNodes(metadata?: Record<string, string>): FlowNode[] {
+  const raw = metadata?.[DESIGN_EPISODE_METADATA_KEY]
+  if (!raw) return []
+
+  try {
+    const parsed = JSON.parse(raw) as SerializedDesignEpisode[]
+    if (!Array.isArray(parsed)) return []
+
+    return parsed
+      .filter((item): item is SerializedDesignEpisode => !!item && typeof item.id === 'string' && typeof item.label === 'string')
+      .map((item, idx) => ({
+        id: item.id,
+        type: 'superNode',
+        position: item.position ?? { x: 120 + idx * 380, y: 120 },
+        data: {
+          label: item.label,
+          nodeType: 'super',
+          action: typeof item.summary === 'string' ? item.summary : '',
+          config: item.config ?? {},
+          childNodeIds: sanitizeChildNodeIds(item.childNodeIds),
+        },
+      }))
+  } catch {
+    return []
+  }
+}
+
+function serializeDesignEpisodeNodes(nodes: FlowNode[]): string {
+  const serialized: SerializedDesignEpisode[] = nodes
+    .filter((node) => node.data.nodeType === 'super')
+    .map((node) => ({
+      id: node.id,
+      label: node.data.label,
+      summary: node.data.action,
+      config: node.data.config,
+      childNodeIds: sanitizeChildNodeIds(node.data.childNodeIds),
+      position: node.position,
+    }))
+  return JSON.stringify(serialized)
+}
+
 interface GraphState {
   // Layout — always Workbench (Classic/Workbench toggle removed in Batch 3).
   useWorkbenchLayout: boolean
@@ -136,6 +193,7 @@ interface GraphState {
   // Workflow name
   workflowId: string | null
   workflowName: string
+  workflowMetadata: Record<string, string>
   setWorkflowId: (id: string | null) => void
   setWorkflowName: (name: string) => void
 
@@ -263,7 +321,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       mcp: 'MCP Tool',
       human: 'Manual Review',
       router: 'Router',
-      super: 'Super Group',
+      super: 'Design Episode',
     }
 
     const newNode: FlowNode = {
@@ -302,6 +360,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
 
   workflowId: null,
   workflowName: 'Untitled Workflow',
+  workflowMetadata: {},
   setWorkflowId: (id) => set({ workflowId: id }),
   setWorkflowName: (name) => set({ workflowName: name }),
 
@@ -373,7 +432,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   },
 
   toDAGConfig: () => {
-    const { nodes, edges, workflowName, workflowId } = get()
+    const { nodes, edges, workflowName, workflowId, workflowMetadata } = get()
 
     // Super nodes are canvas-only grouping constructs — never sent to the backend.
     const workflowNodes: WorkflowNode[] = nodes
@@ -393,9 +452,15 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       return entry
     })
 
+    const metadata: Record<string, string> = {
+      ...workflowMetadata,
+      [DESIGN_EPISODE_METADATA_KEY]: serializeDesignEpisodeNodes(nodes),
+    }
+
     return {
       id: workflowId ?? undefined,
       name: workflowName,
+      metadata,
       nodes: workflowNodes,
       edges: workflowEdges,
     }
@@ -424,14 +489,17 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       data: e.condition ? { condition: e.condition } : undefined,
     }))
 
-    // Apply BFS-based layout so fan-out nodes don't overlap
-    const nodes = computeDAGLayout(rawNodes, dagEdges)
+    // Apply BFS-based layout so fan-out nodes don't overlap, then append
+    // design-time episode shells restored from DAG metadata.
+    const layoutNodes = computeDAGLayout(rawNodes, dagEdges)
+    const nodes = [...layoutNodes, ...parseDesignEpisodeNodes(dag.metadata)]
 
     set({
       nodes,
       edges,
       workflowId: dag.id ?? null,
       workflowName: dag.name ?? 'Untitled Workflow',
+      workflowMetadata: dag.metadata ?? {},
       selectedNodeId: null,
       executionResult: null,
       activeExecutionId: null,
@@ -449,6 +517,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       executionResult: null,
       activeExecutionId: null,
       workflowId: null,
+      workflowMetadata: {},
       nodeStatuses: {},
       focusedEpisodeId: null,
       viewLevel: 'overview',

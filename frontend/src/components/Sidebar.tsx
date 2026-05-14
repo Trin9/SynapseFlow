@@ -59,7 +59,7 @@ export function Sidebar() {
           )
         })}
 
-        {/* SuperNode group entry */}
+        {/* Design Episode entry */}
         <div
           draggable
           onDragStart={(e) => onDragStart(e, 'super')}
@@ -69,11 +69,11 @@ export function Sidebar() {
         >
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold uppercase text-slate-600 dark:text-slate-300">
-              SuperNode
+              Episode
             </span>
           </div>
           <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
-            Collapsible node group
+            Design-time episode shell with expected behavior and internal nodes
           </p>
         </div>
       </div>

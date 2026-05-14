@@ -19,6 +19,7 @@ export function ConfigPanel() {
   const [label, setLabel] = useState('')
   const [action, setAction] = useState('')
   const [configJson, setConfigJson] = useState('')
+  const [expectedBehaviorText, setExpectedBehaviorText] = useState('')
 
   // Sync from store to local state when selection changes
   useEffect(() => {
@@ -26,6 +27,11 @@ export function ConfigPanel() {
       setLabel(selectedNode.data.label)
       setAction(selectedNode.data.action)
       setConfigJson(JSON.stringify(selectedNode.data.config, null, 2))
+      const nextConfig = selectedNode.data.config as Record<string, unknown>
+      const expectedBehaviors = Array.isArray(nextConfig.expected_behaviors)
+        ? nextConfig.expected_behaviors.filter((item): item is string => typeof item === 'string')
+        : []
+      setExpectedBehaviorText(expectedBehaviors.join('\n'))
     }
   }, [selectedNode])
 
@@ -56,28 +62,116 @@ export function ConfigPanel() {
   const nodeType = selectedNode.data.nodeType
   // Super nodes don't have type metadata — show a minimal panel
   if (nodeType === 'super') {
+    const config = (selectedNode.data.config ?? {}) as Record<string, unknown>
+    const candidateNodes = nodes.filter((node) => node.data.nodeType !== 'super')
+    const assignedChildIds = new Set(selectedNode.data.childNodeIds ?? [])
+
+    const handleEpisodeSave = () => {
+      if (!selectedNodeId) return
+      const expectedBehaviors = expectedBehaviorText
+        .split('\n')
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0)
+
+      updateNodeData(selectedNodeId, {
+        label,
+        action,
+        config: {
+          ...config,
+          expected_behaviors: expectedBehaviors,
+        },
+      })
+    }
+
+    const toggleChildAssignment = (childId: string) => {
+      if (!selectedNodeId) return
+      const nextChildIds = assignedChildIds.has(childId)
+        ? [...assignedChildIds].filter((id) => id !== childId)
+        : [...assignedChildIds, childId]
+
+      updateNodeData(selectedNodeId, { childNodeIds: nextChildIds })
+    }
+
     return (
       <div className="w-72 bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700 flex flex-col overflow-y-auto">
         <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-          <span className="text-xs font-bold uppercase text-slate-600 dark:text-slate-300">SuperNode</span>
+          <span className="text-xs font-bold uppercase text-slate-600 dark:text-slate-300">Episode Draft</span>
           <button onClick={() => setSelectedNodeId(null)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 text-lg">x</button>
         </div>
         <div className="p-4 space-y-4">
           <div>
-            <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Group Label</label>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Episode Label</label>
             <input
               type="text"
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              onBlur={handleSave}
+              onBlur={handleEpisodeSave}
               className="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md
                          bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100
                          focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
             />
           </div>
-          <p className="text-[11px] text-gray-400 dark:text-gray-500">
-            Child nodes: {(selectedNode.data.childNodeIds ?? []).length}
-          </p>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Episode Summary</label>
+            <textarea
+              value={action}
+              onChange={(e) => setAction(e.target.value)}
+              onBlur={handleEpisodeSave}
+              rows={3}
+              placeholder="Describe what this episode is supposed to establish before runtime signals arrive."
+              className="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md
+                         bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100
+                         focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent
+                         resize-y"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Expected Behavior</label>
+            <textarea
+              value={expectedBehaviorText}
+              onChange={(e) => setExpectedBehaviorText(e.target.value)}
+              onBlur={handleEpisodeSave}
+              rows={6}
+              placeholder={'One expected behavior per line\nStorefront health check succeeds\nProduct discovery returns at least one product id'}
+              className="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md
+                         bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100
+                         focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent
+                         resize-y"
+            />
+            <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">
+              This is design-time intent only. Confidence, evidence and handles are filled in during execution.
+            </p>
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-300">Internal Nodes</label>
+              <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                {(selectedNode.data.childNodeIds ?? []).length} assigned
+              </span>
+            </div>
+            <div className="max-h-56 overflow-y-auto rounded-md border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-800">
+              {candidateNodes.length === 0 && (
+                <p className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500">Add workflow nodes first, then assign them to this episode.</p>
+              )}
+              {candidateNodes.map((node) => {
+                const checked = assignedChildIds.has(node.id)
+                return (
+                  <label key={node.id} className="flex items-start gap-2 px-3 py-2 text-xs cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleChildAssignment(node.id)}
+                      className="mt-0.5"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-medium text-gray-700 dark:text-gray-200 truncate">{node.data.label}</span>
+                      <span className="block text-[10px] text-gray-400 dark:text-gray-500 uppercase">{node.data.nodeType}</span>
+                    </span>
+                  </label>
+                )
+              })}
+            </div>
+          </div>
         </div>
         <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700">
           <button

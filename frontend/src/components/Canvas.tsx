@@ -1,12 +1,11 @@
 import { useCallback, type DragEvent } from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import {
   ReactFlow,
   Background,
   Controls,
   MiniMap,
   type ReactFlowInstance,
-  type Viewport,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
@@ -14,13 +13,14 @@ import { nodeTypes } from './nodes/CustomNodes'
 import { edgeTypes } from './edges/LabeledEdge'
 import { useGraphStore, type FlowNode, type FlowEdge } from '@/hooks/useGraphStore'
 import type { AnyNodeType } from '@/types'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getExecutionSummaryView, listEpisodeSummariesByExecution } from '@/api/episodes'
 import { getSceneManifest } from '@/lib/sceneManifest'
 
 import { useRef } from 'react'
 
 export function Canvas() {
+  const queryClient = useQueryClient()
   const appMode = useGraphStore((s) => s.appMode)
   const activeExecutionId = useGraphStore((s) => s.activeExecutionId)
   const useWorkbenchLayout = useGraphStore((s) => s.useWorkbenchLayout)
@@ -43,18 +43,7 @@ export function Canvas() {
   const isReview = appMode === 'REVIEW'
 
   const reactFlowRef = useRef<ReactFlowInstance<FlowNode, FlowEdge> | null>(null)
-  const [lockedViewport, setLockedViewport] = useState<Viewport | null>(null)
-
-  useEffect(() => {
-    const shouldLockViewport = isReview || isRunning
-    if (!shouldLockViewport) {
-      setLockedViewport(null)
-      return
-    }
-    if (!lockedViewport && reactFlowRef.current) {
-      setLockedViewport(reactFlowRef.current.getViewport())
-    }
-  }, [isReview, isRunning, lockedViewport])
+  const lastAutoFitKeyRef = useRef<string | null>(null)
 
   const onDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
     event.preventDefault()
@@ -109,6 +98,22 @@ export function Canvas() {
     enabled: useEpisodeRendererSwap,
   })
 
+  useEffect(() => {
+    if (!useEpisodeRendererSwap || !activeExecutionId) return
+    void queryClient.invalidateQueries({
+      queryKey: ['review-canvas-episodes', activeExecutionId],
+    })
+  }, [activeExecutionId, queryClient, useEpisodeRendererSwap])
+
+  useEffect(() => {
+    if (!useEpisodeRendererSwap || !activeExecutionId) return
+    if (isRunning) return
+    // Ensure we fetch the final episode summaries after execution settles.
+    void queryClient.invalidateQueries({
+      queryKey: ['review-canvas-episodes', activeExecutionId],
+    })
+  }, [activeExecutionId, isRunning, queryClient, useEpisodeRendererSwap])
+
   const sceneManifest = getSceneManifest(executionSummary?.dag_id, executionSummary?.dag_name)
 
   const orderedEpisodeSummaries = useMemo(() => {
@@ -133,8 +138,78 @@ export function Canvas() {
   // SuperNode drilldown: restrict visible nodes/edges to the active super-group
   const isDrilldown = viewLevel === 'drilldown' && activeSuperNodeId != null
 
+  const designEpisodeNodes = useMemo<FlowNode[]>(() => {
+    if (useEpisodeRendererSwap) return []
+    return nodes.filter((node) => node.data.nodeType === 'super')
+  }, [nodes, useEpisodeRendererSwap])
+
+  const designEpisodeEdges = useMemo<FlowEdge[]>(() => {
+    if (useEpisodeRendererSwap) return []
+
+    const designEpisodes = nodes.filter((node) => node.data.nodeType === 'super')
+    if (designEpisodes.length <= 1) return []
+
+    const ownerByChild = new Map<string, string>()
+    for (const episode of designEpisodes) {
+      for (const childId of episode.data.childNodeIds ?? []) ownerByChild.set(childId, episode.id)
+    }
+
+    const seen = new Set<string>()
+    const nextEdges: FlowEdge[] = []
+    for (const edge of edges) {
+      const fromEpisode = ownerByChild.get(edge.source)
+      const toEpisode = ownerByChild.get(edge.target)
+      if (!fromEpisode || !toEpisode || fromEpisode === toEpisode) continue
+
+      const key = `${fromEpisode}->${toEpisode}`
+      if (seen.has(key)) continue
+      seen.add(key)
+
+      nextEdges.push({
+        id: `design-episode-${fromEpisode}-${toEpisode}`,
+        source: fromEpisode,
+        target: toEpisode,
+        type: 'labeled',
+        animated: true,
+        style: { stroke: '#67e8f9', strokeWidth: 2 },
+      } as FlowEdge)
+    }
+
+    return nextEdges
+  }, [edges, nodes, useEpisodeRendererSwap])
+
   const reviewSwapNodes = useMemo<FlowNode[]>(() => {
     if (!useEpisodeRendererSwap) return []
+    const fallbackChildIds = nodes
+      .filter((n) => n.data.nodeType !== 'super')
+      .map((n) => n.id)
+
+    if (orderedEpisodeSummaries.length === 0) {
+      if (!executionSummary) return []
+      return [
+        {
+          id: `episode-fallback-${executionSummary.execution_id}`,
+          type: 'episodeOverviewNode',
+          position: { x: 120, y: 120 },
+          data: {
+            label: `${executionSummary.workflow_kind || 'execution'} episode`,
+            nodeType: 'llm',
+            action: executionSummary.display?.trace_summary || 'Execution is in progress. Episode summary will appear shortly.',
+            config: {
+              episode_id: '',
+              status: executionSummary.status,
+              verdict: undefined,
+              verdict_label: executionSummary.status === 'failed' ? 'FAIL' : executionSummary.status === 'completed' ? 'PASS' : 'OPEN',
+              evidence_count: 0,
+              handle_count: 0,
+              confidence: '-',
+              child_preview: sceneManifest?.childPreview ?? [],
+            },
+            childNodeIds: fallbackChildIds,
+          },
+        } as FlowNode,
+      ]
+    }
 
     return orderedEpisodeSummaries.map((sv, idx) => ({
       id: `episode-${sv.episode_id}`,
@@ -154,12 +229,26 @@ export function Canvas() {
           confidence: sv.confidence,
           child_preview: sceneManifest?.childPreview ?? [],
         },
-        childNodeIds: Array.isArray(sv.node_ids) && sv.node_ids.length > 0
-          ? sv.node_ids
-          : [],
+        childNodeIds: (() => {
+          const fromSummary = Array.isArray(sv.node_ids)
+            ? sv.node_ids.filter((id): id is string => typeof id === 'string' && id.length > 0)
+            : []
+          if (fromSummary.length > 0) return fromSummary
+
+          const fromPreview = Array.isArray(sceneManifest?.childPreview)
+            ? sceneManifest.childPreview
+                .map((item) => item?.id)
+                .filter((id): id is string => typeof id === 'string' && id.length > 0)
+            : []
+          if (fromPreview.length > 0) return fromPreview
+
+          // Last-resort fallback so episode cards remain drillable even when
+          // backend node mapping is temporarily unavailable.
+          return fallbackChildIds
+        })(),
       },
     }))
-  }, [orderedEpisodeSummaries, sceneManifest?.childPreview, useEpisodeRendererSwap])
+  }, [executionSummary, nodes, orderedEpisodeSummaries, sceneManifest?.childPreview, useEpisodeRendererSwap])
 
   const reviewSwapEdges = useMemo<FlowEdge[]>(() => {
     if (!useEpisodeRendererSwap) return []
@@ -180,6 +269,7 @@ export function Canvas() {
   }, [orderedEpisodeSummaries, useEpisodeRendererSwap])
 
   const hasEpisodeOverview = useEpisodeRendererSwap && reviewSwapNodes.length > 0
+  const hasDesignEpisodeOverview = !useEpisodeRendererSwap && designEpisodeNodes.length > 0
 
   const visibleNodes: FlowNode[] = useEpisodeRendererSwap
     ? hasEpisodeOverview
@@ -191,13 +281,20 @@ export function Canvas() {
           })()
         : reviewSwapNodes
       : []
-    : isDrilldown
-      ? nodes.filter((n) => {
-          if (n.id === activeSuperNodeId) return true
-          const superNode = nodes.find((s) => s.id === activeSuperNodeId)
-          return (superNode?.data.childNodeIds ?? []).includes(n.id)
-        })
-      : nodes
+    : hasDesignEpisodeOverview
+      ? isDrilldown
+        ? nodes.filter((n) => {
+            const episodeNode = nodes.find((s) => s.id === activeSuperNodeId)
+            return (episodeNode?.data.childNodeIds ?? []).includes(n.id)
+          })
+        : designEpisodeNodes
+      : isDrilldown
+        ? nodes.filter((n) => {
+            if (n.id === activeSuperNodeId) return true
+            const superNode = nodes.find((s) => s.id === activeSuperNodeId)
+            return (superNode?.data.childNodeIds ?? []).includes(n.id)
+          })
+        : nodes
 
   const visibleEdges: FlowEdge[] = useEpisodeRendererSwap
     ? hasEpisodeOverview
@@ -209,14 +306,40 @@ export function Canvas() {
           })()
         : reviewSwapEdges
       : []
-    : isDrilldown
-      ? (() => {
-          const superNode = nodes.find((s) => s.id === activeSuperNodeId)
-          const childSet = new Set(superNode?.data.childNodeIds ?? [])
-          childSet.add(activeSuperNodeId!)
-          return edges.filter((e) => childSet.has(e.source) && childSet.has(e.target))
-        })()
-      : edges
+    : hasDesignEpisodeOverview
+      ? isDrilldown
+        ? (() => {
+            const episodeNode = nodes.find((s) => s.id === activeSuperNodeId)
+            const childSet = new Set(episodeNode?.data.childNodeIds ?? [])
+            return edges.filter((e) => childSet.has(e.source) && childSet.has(e.target))
+          })()
+        : designEpisodeEdges
+      : isDrilldown
+        ? (() => {
+            const superNode = nodes.find((s) => s.id === activeSuperNodeId)
+            const childSet = new Set(superNode?.data.childNodeIds ?? [])
+            childSet.add(activeSuperNodeId!)
+            return edges.filter((e) => childSet.has(e.source) && childSet.has(e.target))
+          })()
+        : edges
+
+  useEffect(() => {
+    if (!useEpisodeRendererSwap) return
+    if (!reactFlowRef.current) return
+    if (visibleNodes.length === 0) return
+
+    const fitKey = `${activeExecutionId ?? 'none'}:${viewLevel}:${activeSuperNodeId ?? 'root'}:${visibleNodes.length}`
+    if (lastAutoFitKeyRef.current === fitKey) return
+    lastAutoFitKeyRef.current = fitKey
+
+    requestAnimationFrame(() => {
+      reactFlowRef.current?.fitView({
+        duration: 180,
+        padding: 0.2,
+        maxZoom: 1.25,
+      })
+    })
+  }, [activeExecutionId, activeSuperNodeId, useEpisodeRendererSwap, viewLevel, visibleNodes.length])
 
   return (
     <div className="h-full w-full min-h-0 flex flex-col">
@@ -256,7 +379,6 @@ export function Canvas() {
           onPaneClick={isReview ? undefined : onPaneClick}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
-          viewport={lockedViewport ?? undefined}
           nodesDraggable={!isReview}
           nodesConnectable={!isReview}
           elementsSelectable={!isReview}
