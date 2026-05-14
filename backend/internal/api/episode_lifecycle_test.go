@@ -267,6 +267,83 @@ func TestEpisodeLifecycle_DefaultEpisodeCreated_WhenEpisodeTypeAbsent(t *testing
 	}
 }
 
+// TestEpisodeLifecycle_DesignEpisodesCreateRuntimeSkeletons verifies that
+// execution start creates runtime episode skeletons from dag.episodes specs.
+func TestEpisodeLifecycle_DesignEpisodesCreateRuntimeSkeletons(t *testing.T) {
+	s := NewServer()
+	dag := map[string]interface{}{
+		"name": "design-episode-bootstrap",
+		"metadata": map[string]interface{}{
+			"episode_type": "action_verification",
+		},
+		"episodes": []map[string]interface{}{
+			{
+				"id":                 "design_ep_bootstrap",
+				"label":              "Storefront Ready Episode",
+				"summary":            "Verify storefront readiness before transaction setup.",
+				"expected_behaviors": []interface{}{"frontend health endpoint is reachable", "product discovery yields product id"},
+				"node_ids":           []interface{}{"n_health"},
+			},
+			{
+				"id":                 "design_ep_tx_setup",
+				"label":              "Transaction Setup Episode",
+				"summary":            "Verify cart continuity and checkout prerequisites.",
+				"expected_behaviors": []interface{}{"cart add succeeds"},
+				"node_ids":           []interface{}{"n_health"},
+			},
+		},
+		"nodes": []map[string]interface{}{
+			{"id": "n_health", "name": "Health", "type": "script", "action": "echo ok"},
+		},
+		"edges": []map[string]interface{}{},
+	}
+
+	runRec := doJSON(t, s, http.MethodPost, "/api/v1/run", dag)
+	if runRec.Code != http.StatusAccepted {
+		t.Fatalf("run: expected 202, got %d: %s", runRec.Code, runRec.Body.String())
+	}
+	var runResp map[string]interface{}
+	_ = json.Unmarshal(runRec.Body.Bytes(), &runResp)
+	execID, _ := runResp["execution_id"].(string)
+	_ = waitExecutionDone(t, s, execID)
+
+	listRec := do(t, s, http.MethodGet, "/api/v1/executions/"+execID+"/episodes", nil)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", listRec.Code, listRec.Body.String())
+	}
+	var body map[string]interface{}
+	_ = json.Unmarshal(listRec.Body.Bytes(), &body)
+	eps, _ := body["episodes"].([]interface{})
+	if len(eps) != 2 {
+		t.Fatalf("expected 2 runtime episodes from design specs, got %d", len(eps))
+	}
+
+	foundDesignBootstrap := false
+	foundDesignTxSetup := false
+	for _, raw := range eps {
+		ep, _ := raw.(map[string]interface{})
+		actionCtx, _ := ep["action_context"].(map[string]interface{})
+		if actionCtx == nil {
+			continue
+		}
+		actionInput, _ := actionCtx["action_input"].(map[string]interface{})
+		if actionInput == nil {
+			continue
+		}
+		designID, _ := actionInput["design_episode_id"].(string)
+		switch designID {
+		case "design_ep_bootstrap":
+			foundDesignBootstrap = true
+		case "design_ep_tx_setup":
+			foundDesignTxSetup = true
+		}
+	}
+
+	if !foundDesignBootstrap || !foundDesignTxSetup {
+		t.Fatalf("expected runtime episodes to preserve design_episode_id markers, got bootstrap=%v tx_setup=%v", foundDesignBootstrap, foundDesignTxSetup)
+	}
+}
+
 func TestBuildEpisodeDossier_AppliesHumanReviewDisplayProjection(t *testing.T) {
 	now := time.Now().UTC()
 	ep := &models.Episode{

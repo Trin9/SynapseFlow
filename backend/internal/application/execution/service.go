@@ -117,6 +117,9 @@ func (s *Service) RunWorkflow(dag *models.DAGConfig, initialState *models.Global
 // StartExecution creates and asynchronously advances an execution.
 func (s *Service) StartExecution(dag *models.DAGConfig, initialState *models.GlobalState, source string) *models.Execution {
 	execID := generateID()
+	if initialState == nil {
+		initialState = models.NewGlobalState()
+	}
 	exec := &models.Execution{
 		ID:        execID,
 		DAGID:     dag.ID,
@@ -129,27 +132,39 @@ func (s *Service) StartExecution(dag *models.DAGConfig, initialState *models.Glo
 	}
 
 	if s.Episodes != nil {
-		domainType := inferEpisodeType(dag)
-		ep := &models.Episode{
-			ID:            generateID(),
-			ExecID:        execID,
-			EpisodeType:   domainType.ToModel(),
-			Status:        domainEpisode.EpisodeStatusPending.ToModel(),
-			Trigger:       &models.EpisodeTrigger{Type: domainEpisode.EpisodeTriggerManual.ToModel()},
-			LoopGuard:     models.EpisodeLoopGuard{MaxIterations: 10},
-			SchemaVersion: 1,
-			CreatedAt:     time.Now().UTC(),
-			UpdatedAt:     time.Now().UTC(),
+		defaultType := inferEpisodeType(dag)
+		createdEpisodeIDs := make([]string, 0, len(dag.Episodes)+1)
+		primaryEpisodeID := ""
+
+		for _, spec := range dag.Episodes {
+			ep := newEpisodeFromDesignSpec(execID, spec, defaultType)
+			if err := s.Episodes.Create(context.Background(), ep); err != nil {
+				logger.L().Warnw("failed to auto-create design episode", "exec_id", execID, "design_episode_id", spec.ID, "error", err)
+				continue
+			}
+			createdEpisodeIDs = append(createdEpisodeIDs, ep.ID)
+			if primaryEpisodeID == "" {
+				primaryEpisodeID = ep.ID
+			}
 		}
-		if initialState == nil {
-			initialState = models.NewGlobalState()
+
+		if primaryEpisodeID == "" {
+			ep := newDefaultEpisode(execID, defaultType)
+			if err := s.Episodes.Create(context.Background(), ep); err != nil {
+				logger.L().Warnw("failed to auto-create default episode", "exec_id", execID, "error", err)
+			} else {
+				createdEpisodeIDs = append(createdEpisodeIDs, ep.ID)
+				primaryEpisodeID = ep.ID
+			}
 		}
-		if err := s.Episodes.Create(context.Background(), ep); err != nil {
-			logger.L().Warnw("failed to auto-create episode", "exec_id", execID, "error", err)
-		} else {
-			initialState.Set("__episode_id__", ep.ID)
-			logger.L().Infow("auto-created episode", "exec_id", execID, "episode_id", ep.ID, "type", ep.EpisodeType)
+
+		if primaryEpisodeID != "" {
+			initialState.Set("__episode_id__", primaryEpisodeID)
 		}
+		if len(createdEpisodeIDs) > 0 {
+			initialState.Set("__episode_ids__", createdEpisodeIDs)
+		}
+		logger.L().Infow("auto-created episodes", "exec_id", execID, "count", len(createdEpisodeIDs), "primary_episode_id", primaryEpisodeID)
 	}
 
 	ctx := context.Background()
@@ -269,6 +284,72 @@ func inferEpisodeType(dag *models.DAGConfig) domainEpisode.EpisodeType {
 	}
 
 	return domainEpisode.EpisodeTypeActionVerification
+}
+
+func inferEpisodeTypeFromDesignSpec(spec models.DesignEpisode, fallback domainEpisode.EpisodeType) domainEpisode.EpisodeType {
+	if spec.Config != nil {
+		if raw, ok := spec.Config["episode_type"]; ok {
+			if s, ok := raw.(string); ok {
+				candidate := domainEpisode.EpisodeType(strings.TrimSpace(s))
+				if candidate.IsValid() {
+					return candidate
+				}
+			}
+		}
+	}
+	return fallback
+}
+
+func newDefaultEpisode(execID string, episodeType domainEpisode.EpisodeType) *models.Episode {
+	now := time.Now().UTC()
+	return &models.Episode{
+		ID:            generateID(),
+		ExecID:        execID,
+		EpisodeType:   episodeType.ToModel(),
+		Status:        domainEpisode.EpisodeStatusPending.ToModel(),
+		Trigger:       &models.EpisodeTrigger{Type: domainEpisode.EpisodeTriggerManual.ToModel()},
+		LoopGuard:     models.EpisodeLoopGuard{MaxIterations: 10},
+		SchemaVersion: 1,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+}
+
+func newEpisodeFromDesignSpec(execID string, spec models.DesignEpisode, fallbackType domainEpisode.EpisodeType) *models.Episode {
+	episodeType := inferEpisodeTypeFromDesignSpec(spec, fallbackType)
+	ep := newDefaultEpisode(execID, episodeType)
+
+	summary := strings.TrimSpace(spec.Summary)
+	label := strings.TrimSpace(spec.Label)
+	if episodeType == domainEpisode.EpisodeTypeInvestigationStep {
+		ep.InvestigationContext = &models.InvestigationContext{
+			Hypothesis:    firstNonEmpty(summary, label),
+			KnownSignals:  append([]string(nil), spec.ExpectedBehaviors...),
+			RetrievalPlan: "",
+		}
+	} else {
+		ep.ActionContext = &models.ActionContext{
+			ActionName: firstNonEmpty(label, spec.ID, string(episodeType)),
+			ActionType: "design_episode",
+			ActionInput: map[string]interface{}{
+				"design_episode_id":  spec.ID,
+				"summary":            summary,
+				"expected_behaviors": append([]string(nil), spec.ExpectedBehaviors...),
+				"node_ids":           append([]string(nil), spec.NodeIDs...),
+			},
+		}
+	}
+
+	return ep
+}
+
+func firstNonEmpty(candidates ...string) string {
+	for _, c := range candidates {
+		if strings.TrimSpace(c) != "" {
+			return c
+		}
+	}
+	return ""
 }
 
 // ResumeExecution resumes a suspended execution and returns the updated running execution.
