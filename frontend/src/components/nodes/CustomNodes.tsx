@@ -26,6 +26,17 @@ type FlowNode = Node<FlowNodeData>
 function BaseNode({ data, selected, id }: NodeProps<FlowNode>) {
   const info = NODE_TYPE_INFO[data.nodeType as NodeType]
   const status = useGraphStore((s) => s.nodeStatuses[id] ?? 'idle')
+  const ioRoleRaw = typeof data.config?.__episode_io_role === 'string'
+    ? data.config.__episode_io_role
+    : ''
+  const ioRoleLabel =
+    ioRoleRaw === 'entry'
+      ? 'IN'
+      : ioRoleRaw === 'exit'
+        ? 'OUT'
+        : ioRoleRaw === 'entry_exit'
+          ? 'IN/OUT'
+          : ''
 
   const statusClasses =
     status === 'success'
@@ -50,7 +61,7 @@ function BaseNode({ data, selected, id }: NodeProps<FlowNode>) {
     >
       <Handle
         type="target"
-        position={Position.Top}
+        position={Position.Left}
         className="!w-3 !h-3 !bg-gray-400 !border-2 !border-white dark:!border-gray-800"
       />
 
@@ -65,6 +76,11 @@ function BaseNode({ data, selected, id }: NodeProps<FlowNode>) {
           >
             {info.label}
           </span>
+          {ioRoleLabel && (
+            <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded text-cyan-300 bg-cyan-500/10 border border-cyan-500/30">
+              {ioRoleLabel}
+            </span>
+          )}
         </div>
         <div className="mt-1 text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
           {data.label}
@@ -82,7 +98,7 @@ function BaseNode({ data, selected, id }: NodeProps<FlowNode>) {
 
       <Handle
         type="source"
-        position={Position.Bottom}
+        position={Position.Right}
         className="!w-3 !h-3 !bg-gray-400 !border-2 !border-white dark:!border-gray-800"
       />
     </div>
@@ -102,6 +118,12 @@ function SuperNodeBase({ data, selected, id }: NodeProps<FlowNode>) {
   const childCount = (data.childNodeIds ?? []).length
   const expectedBehaviors = Array.isArray(data.config?.expected_behaviors)
     ? (data.config.expected_behaviors as unknown[]).filter((item): item is string => typeof item === 'string')
+    : []
+  const flowInputs = Array.isArray(data.config?.inputs)
+    ? (data.config.inputs as unknown[]).filter((item): item is string => typeof item === 'string')
+    : []
+  const flowOutputs = Array.isArray(data.config?.outputs)
+    ? (data.config.outputs as unknown[]).filter((item): item is string => typeof item === 'string')
     : []
 
   return (
@@ -157,6 +179,35 @@ function SuperNodeBase({ data, selected, id }: NodeProps<FlowNode>) {
             </div>
           )}
         </div>
+
+        {(flowInputs.length > 0 || flowOutputs.length > 0) && (
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-lg border border-cyan-500/25 bg-cyan-500/5 p-2">
+              <div className="text-[10px] uppercase tracking-wider text-cyan-300">Input Flow</div>
+              <div className="mt-1 space-y-1">
+                {flowInputs.length === 0 ? (
+                  <p className="text-[11px] text-zinc-500">none</p>
+                ) : (
+                  flowInputs.slice(0, 3).map((item, idx) => (
+                    <p key={`${id}:in:${idx}`} className="text-[11px] text-zinc-300 truncate" title={item}>↳ {item}</p>
+                  ))
+                )}
+              </div>
+            </div>
+            <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/5 p-2">
+              <div className="text-[10px] uppercase tracking-wider text-emerald-300">Output Flow</div>
+              <div className="mt-1 space-y-1">
+                {flowOutputs.length === 0 ? (
+                  <p className="text-[11px] text-zinc-500">none</p>
+                ) : (
+                  flowOutputs.slice(0, 3).map((item, idx) => (
+                    <p key={`${id}:out:${idx}`} className="text-[11px] text-zinc-300 truncate" title={item}>↱ {item}</p>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="flex items-center justify-between text-xs text-zinc-500">
           <span>{childCount} internal nodes assigned</span>

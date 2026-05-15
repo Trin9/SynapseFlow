@@ -9,6 +9,71 @@
     "pattern": "bounded-agent-loop",
     "episode_type": "investigation_step"
   },
+  "episodes": [
+    {
+      "id": "episode_signal_dispatch",
+      "label": "Signal Intake and Problem Dispatch",
+      "summary": "Replay incident signal and produce structured dispatch context (issue type, repo root, code scope, log strategy, verification contract).",
+      "expected_behaviors": [
+        "replay produces reproducible incident packet",
+        "dispatcher emits structured prior context for downstream retrieval"
+      ],
+      "node_ids": [
+        "replay_trigger",
+        "dispatch_context"
+      ],
+      "config": {
+        "phase": "dispatch",
+        "inputs": [
+          "trigger_context"
+        ],
+        "outputs": [
+          "incident_packet",
+          "dispatch.issue_type",
+          "dispatch.repo_root",
+          "dispatch.code_scope",
+          "dispatch.log_strategy",
+          "dispatch.verification_contract"
+        ]
+      }
+    },
+    {
+      "id": "episode_evidence_collection",
+      "label": "Bounded Evidence Collection",
+      "summary": "Run planner-router bounded loop and evidence actions until convergence criteria are met.",
+      "expected_behaviors": [
+        "planner emits bounded next action",
+        "router routes to matching deterministic action",
+        "code search finds high-signal suspects",
+        "snippet retrieval provides enough context for attribution",
+        "loop terminates once evidence is sufficient"
+      ],
+      "node_ids": [
+        "plan_next_step",
+        "route_decision",
+        "search_code",
+        "fetch_snippet",
+        "search_logs"
+      ],
+      "config": {
+        "phase": "evidence_loop",
+        "inputs": [
+          "incident_packet",
+          "dispatch.issue_type",
+          "dispatch.repo_root",
+          "dispatch.code_scope",
+          "dispatch.log_strategy"
+        ],
+        "outputs": [
+          "plan.next_action",
+          "retrieved_evidence",
+          "root_cause_hypothesis",
+          "plan.report",
+          "plan.done"
+        ]
+      }
+    }
+  ],
   "nodes": [
     {
       "id": "replay_trigger",
@@ -20,10 +85,41 @@
       }
     },
     {
+      "id": "dispatch_context",
+      "name": "Analyze trigger and dispatch context",
+      "type": "llm",
+      "action": "You are a bounded dispatch node for incident investigation. Read the trigger packet and emit strict JSON for downstream evidence collection.\n\nTrigger packet:\n{{replay_trigger}}\n\nReturn JSON keys:\n- issue_type\n- repo_root\n- code_scope\n- log_strategy\n- verification_contract\n- recommended_first_query\n- recommended_service\n- confidence",
+      "config": {
+        "json_mode": true,
+        "temperature": 0,
+        "state_key": "dispatch",
+        "parse_json_output": true,
+        "json_defaults": {
+          "issue_type": "dependency_unreachable",
+          "repo_root": "/home/trin/project/Synapse/deep-fault-lab",
+          "code_scope": "src/checkout",
+          "log_strategy": "docker_compose_logs",
+          "verification_contract": "locate concrete failing symbol or endpoint and provide root-cause explanation",
+          "recommended_first_query": "badAddress",
+          "recommended_service": "checkout",
+          "confidence": "medium"
+        },
+        "required_json_keys": [
+          "issue_type",
+          "repo_root",
+          "code_scope",
+          "log_strategy",
+          "verification_contract"
+        ],
+        "timeout_seconds": 60,
+        "system_prompt": "You are a bounded dispatcher. Do not call tools. Do not output prose. Emit strict JSON only. Use conservative defaults when trigger packet is incomplete."
+      }
+    },
+    {
       "id": "plan_next_step",
       "name": "Plan next bounded step",
       "type": "llm",
-      "action": "You are given an incident packet and the latest retrieved evidence. Choose exactly one next action from: search_code, fetch_snippet, search_logs, finish_report. Prefer the smallest high-signal step. Never repeat the same log search when the latest log search result is empty. If a log search returns empty but the incident packet already contains a concrete error literal or suspect identifier, switch to code search using that literal. If code search already reveals a concrete suspect line or symbol, either fetch_snippet for that symbol or emit finish_report.\n\nIncident packet:\n{{replay_trigger}}\n\nLatest code search results:\n{{search_code}}\n\nLatest code snippet:\n{{fetch_snippet}}\n\nLatest log search results:\n{{search_logs}}\n\nReturn valid JSON with keys: next_action, reason, scope, query, service, symbol, line, done, report.",
+      "action": "You are given dispatch context, incident packet, and latest evidence. Choose exactly one next action from: search_code, fetch_snippet, search_logs, finish_report. Prefer the smallest high-signal step.\n\nDispatch context:\n{{dispatch_context}}\n\nIncident packet:\n{{replay_trigger}}\n\nLatest code search results:\n{{search_code}}\n\nLatest code snippet:\n{{fetch_snippet}}\n\nLatest log search results:\n{{search_logs}}\n\nReturn valid JSON with keys: next_action, reason, scope, query, service, symbol, line, done, report.",
       "config": {
         "json_mode": true,
         "temperature": 0,
@@ -40,7 +136,7 @@
         },
         "required_json_keys": ["next_action", "done"],
         "timeout_seconds": 90,
-        "system_prompt": "You are a bounded Synapse planner node. You must not invent tools or execute actions. Choose one allowed next action and emit strict JSON only. Use the repository mapping below: checkout code lives under src/checkout, checkout logs come from docker compose logs checkout, payment logs come from docker compose logs payment, flagd logs come from docker compose logs flagd. Your JSON must always include: next_action, done, reason, scope, query, service, symbol, line, report. If the latest retrieval output is empty, you must change strategy instead of repeating the same query. Do not choose the same search_logs action twice in a row unless the service or query materially changes. If the incident packet contains a concrete identifier such as lookup badAddress, prefer search_code in src/checkout for that identifier over another empty log search. If code search or snippet evidence is sufficient to explain the failure, emit finish_report with done=true and a concise report."
+        "system_prompt": "You are a bounded Synapse planner node. You must not invent tools or execute actions. Choose one allowed next action and emit strict JSON only. Prefer dispatch context as prior constraints (repo_root/code_scope/log_strategy), but you may override when evidence contradicts priors. Your JSON must always include: next_action, done, reason, scope, query, service, symbol, line, report. If the latest retrieval output is empty, change strategy instead of repeating the same query. Do not choose the same search_logs action twice in a row unless service or query materially changes. If incident packet contains a concrete identifier such as lookup badAddress, prefer code search using that literal. If evidence is sufficient, emit finish_report with done=true and concise report."
       }
     },
     {
@@ -53,7 +149,7 @@
       "id": "search_code",
       "name": "Search code by keyword",
       "type": "script",
-      "action": "cd /home/trin/project/Synapse/deep-fault-lab && grep -RIn --exclude-dir .git -- '{{plan.query}}' '{{plan.scope}}' | head -n 20",
+      "action": "ROOT='{{dispatch.repo_root}}'; SCOPE='{{plan.scope}}'; if [ -z \"$SCOPE\" ]; then SCOPE='{{dispatch.code_scope}}'; fi; cd \"$ROOT\" && grep -RIn --exclude-dir .git -- '{{plan.query}}' \"$SCOPE\" | head -n 20",
       "config": {
         "timeout_seconds": 30
       }
@@ -62,7 +158,7 @@
       "id": "fetch_snippet",
       "name": "Fetch Go snippet",
       "type": "script",
-      "action": "cd /home/trin/project/Synapse/deep-fault-lab/synapse && if [ '{{plan.line}}' != '0' ] && [ '{{plan.line}}' != 'null' ] && [ -n '{{plan.line}}' ]; then go run ./cmd/labctl snippet go --file '{{plan.scope}}' --line '{{plan.line}}' --context-lines 18; else go run ./cmd/labctl snippet go --file '{{plan.scope}}' --symbol '{{plan.symbol}}'; fi",
+      "action": "ROOT='{{dispatch.repo_root}}'; cd \"$ROOT/synapse\" && if [ '{{plan.line}}' != '0' ] && [ '{{plan.line}}' != 'null' ] && [ -n '{{plan.line}}' ]; then go run ./cmd/labctl snippet go --file '{{plan.scope}}' --line '{{plan.line}}' --context-lines 18; else go run ./cmd/labctl snippet go --file '{{plan.scope}}' --symbol '{{plan.symbol}}'; fi",
       "config": {
         "timeout_seconds": 30
       }
@@ -71,7 +167,7 @@
       "id": "search_logs",
       "name": "Search service logs",
       "type": "script",
-      "action": "cd /home/trin/project/Synapse/deep-fault-lab && docker compose logs --tail=120 '{{plan.service}}' | grep -n -- '{{plan.query}}' | tail -n 20 || true",
+      "action": "ROOT='{{dispatch.repo_root}}'; cd \"$ROOT\" && docker compose logs --tail=120 '{{plan.service}}' | grep -n -- '{{plan.query}}' | tail -n 20 || true",
       "config": {
         "timeout_seconds": 30
       }
@@ -87,8 +183,9 @@
     }
   ],
   "edges": [
-    { "from": "replay_trigger", "to": "plan_next_step" },
-    { "from": "plan_next_step", "to": "route_decision", "condition": "{{plan_next_step}}" },
+    { "from": "replay_trigger", "to": "dispatch_context" },
+    { "from": "dispatch_context", "to": "plan_next_step" },
+    { "from": "plan_next_step", "to": "route_decision" },
     { "from": "route_decision", "to": "search_code", "condition": "{{plan.next_action}} == search_code" },
     { "from": "route_decision", "to": "fetch_snippet", "condition": "{{plan.next_action}} == fetch_snippet" },
     { "from": "route_decision", "to": "search_logs", "condition": "{{plan.next_action}} == search_logs" },

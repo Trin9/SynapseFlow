@@ -25,29 +25,68 @@ import type { Episode } from '@/types/episode'
 // DAG layout: BFS-based level assignment, horizontal layout (left → right)
 // Handles fan-out/fan-in correctly by assigning the maximum depth per node.
 // ---------------------------------------------------------------------------
+/**
+ * Detect back-edges in a directed graph using DFS coloring.
+ * Back-edges are those that point from a descendant to an ancestor in the DFS
+ * tree, i.e. they form cycles. Removing them produces a DAG suitable for
+ * topological layout.
+ */
+function findBackEdges(nodeIds: string[], dagEdges: WorkflowEdge[]): Set<string> {
+  const adj: Record<string, string[]> = {}
+  for (const id of nodeIds) adj[id] = []
+  for (const e of dagEdges) {
+    if (adj[e.from] !== undefined) adj[e.from].push(e.to)
+  }
+
+  const visited = new Set<string>()
+  const inStack = new Set<string>()
+  const backs = new Set<string>()
+
+  function dfs(id: string): void {
+    visited.add(id)
+    inStack.add(id)
+    for (const nb of adj[id] ?? []) {
+      if (!visited.has(nb)) dfs(nb)
+      else if (inStack.has(nb)) backs.add(`${id}→${nb}`)
+    }
+    inStack.delete(id)
+  }
+
+  for (const id of nodeIds) if (!visited.has(id)) dfs(id)
+  return backs
+}
+
 function computeDAGLayout(
   nodes: FlowNode[],
   dagEdges: WorkflowEdge[],
+  opts?: { levelWidth?: number; nodeHeight?: number; startX?: number; centerY?: number },
 ): FlowNode[] {
-  const LEVEL_WIDTH = 270   // horizontal spacing between levels
-  const NODE_HEIGHT = 120   // vertical spacing between nodes in the same level
-  const START_X = 80
-  const CENTER_Y = 320
+  const LEVEL_WIDTH = opts?.levelWidth ?? 270   // horizontal spacing between levels
+  const NODE_HEIGHT = opts?.nodeHeight ?? 120   // vertical spacing between nodes in the same level
+  const START_X = opts?.startX ?? 80
+  const CENTER_Y = opts?.centerY ?? 320
 
-  // Build adjacency maps
+  // Strip back-edges so the Kahn BFS always resolves every node, giving
+  // agent-loop graphs a clean left-to-right layout instead of an alphabetical
+  // fallback.
+  const nodeIds = nodes.map((n) => n.id)
+  const backEdgeKeys = findBackEdges(nodeIds, dagEdges)
+  const forwardEdges = dagEdges.filter((e) => !backEdgeKeys.has(`${e.from}→${e.to}`))
+
+  // Build adjacency maps using forward edges only.
   const inDegreeCount: Record<string, number> = {}
   const outEdgesMap: Record<string, string[]> = {}
   for (const n of nodes) {
     inDegreeCount[n.id] = 0
     outEdgesMap[n.id] = []
   }
-  for (const e of dagEdges) {
+  for (const e of forwardEdges) {
     if (outEdgesMap[e.from] === undefined || inDegreeCount[e.to] === undefined) continue
     outEdgesMap[e.from].push(e.to)
     inDegreeCount[e.to] += 1
   }
 
-  // Assign levels with Kahn topological traversal (cycle-safe).
+  // Assign levels with Kahn topological traversal (now cycle-free).
   const levels: Record<string, number> = {}
   for (const n of nodes) levels[n.id] = 0
 
@@ -69,14 +108,16 @@ function computeDAGLayout(
     }
   }
 
-  // If cycles exist (agent loops), keep layout deterministic instead of hanging.
+  // Safety fallback: if any nodes remain unresolved (unexpected), assign them
+  // incrementally after the last resolved level.
   if (processed < nodes.length) {
+    const maxLevel = Math.max(0, ...Object.values(levels))
     const unresolved = nodes
       .map((n) => n.id)
       .filter((id) => (inDegreeCount[id] ?? 0) > 0)
       .sort((a, b) => a.localeCompare(b))
     unresolved.forEach((id, idx) => {
-      levels[id] = Math.max(levels[id] ?? 0, idx)
+      levels[id] = maxLevel + 1 + idx
     })
   }
 
@@ -277,6 +318,10 @@ interface GraphState {
   focusedEpisodeId: string | null
   setFocusedEpisodeId: (id: string | null) => void
 
+  // Auto-layout flag: enabled by default, disabled when user manually drags nodes
+  enableAutoLayout: boolean
+  setEnableAutoLayout: (enable: boolean) => void
+
   // SuperNode drilldown view level
   viewLevel: 'overview' | 'drilldown'
   activeSuperNodeId: string | null
@@ -346,6 +391,11 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   edges: [],
 
   onNodesChange: (changes) => {
+    // If user is dragging nodes, disable auto-layout so their manual positions aren't overwritten.
+    const hasPositionChange = changes.some((c) => c.type === 'position' && c.dragging)
+    if (hasPositionChange) {
+      set({ enableAutoLayout: false })
+    }
     set({ nodes: applyNodeChanges(changes, get().nodes) })
   },
 
@@ -443,6 +493,9 @@ export const useGraphStore = create<GraphState>((set, get) => ({
 
   focusedEpisodeId: null,
   setFocusedEpisodeId: (id) => set({ focusedEpisodeId: id }),
+
+  enableAutoLayout: true,
+  setEnableAutoLayout: (enable) => set({ enableAutoLayout: enable }),
 
   viewLevel: 'overview',
   activeSuperNodeId: null,

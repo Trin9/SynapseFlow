@@ -9,12 +9,113 @@
     "service_name": "frontend",
     "episode_type": "action_verification"
   },
+  "episodes": [
+    {
+      "id": "episode_bootstrap",
+      "label": "Signal Intake and Scenario Dispatch",
+      "summary": "Normalize trigger context and emit execution priors (base URL, namespace, verification contract) before action path execution.",
+      "expected_behaviors": [
+        "dispatcher emits structured execution priors",
+        "frontend health endpoint is reachable",
+        "product id is discoverable from storefront"
+      ],
+      "node_ids": [
+        "dispatch_context",
+        "frontend_health",
+        "discover_product"
+      ],
+      "config": {
+        "phase": "dispatch",
+        "inputs": [
+          "trigger_context"
+        ],
+        "outputs": [
+          "dispatch.base_url",
+          "dispatch.kubectl_namespace",
+          "dispatch.kubectl_context",
+          "dispatch.verification_contract",
+          "frontend_health",
+          "product_id"
+        ]
+      }
+    },
+    {
+      "id": "episode_bounded_evidence_and_audit",
+      "label": "Bounded Evidence Collection and Audit",
+      "summary": "Execute checkout path, collect service evidence, and route verdict through bounded audit decisions.",
+      "expected_behaviors": [
+        "cart contains selected product after add",
+        "checkout request returns terminal response",
+        "cart is cleared after successful checkout",
+        "audit node emits structured verdict JSON",
+        "route selects finish or human review explicitly"
+      ],
+      "node_ids": [
+        "add_to_cart",
+        "capture_session_id",
+        "verify_cart_after_add",
+        "place_order",
+        "verify_cart_after_checkout",
+        "checkout_logs",
+        "payment_logs",
+        "shipping_logs",
+        "audit_order_consistency",
+        "route_audit"
+      ],
+      "config": {
+        "phase": "evidence_audit",
+        "inputs": [
+          "dispatch.base_url",
+          "dispatch.kubectl_namespace",
+          "dispatch.kubectl_context",
+          "checkout_response",
+          "cart_state_after_checkout",
+          "session_id"
+        ],
+        "outputs": [
+          "audit.summary",
+          "audit.next_action",
+          "audit.evidence"
+        ]
+      }
+    }
+  ],
   "nodes": [
+    {
+      "id": "dispatch_context",
+      "name": "Analyze trigger and dispatch context",
+      "type": "llm",
+      "action": "You are a bounded dispatch node for boutique checkout verification. Read trigger context and emit strict JSON for downstream execution priors.\n\nReturn JSON keys:\n- base_url\n- kubectl_namespace\n- kubectl_context\n- verification_contract\n- expected_signals\n- confidence",
+      "config": {
+        "json_mode": true,
+        "temperature": 0,
+        "state_key": "dispatch",
+        "parse_json_output": true,
+        "json_defaults": {
+          "base_url": "http://127.0.0.1:18080",
+          "kubectl_namespace": "default",
+          "kubectl_context": "",
+          "verification_contract": "cart_contains_product after add, cart_cleared after checkout, and service logs aligned with page outcome",
+          "expected_signals": [
+            "cart_contains_product",
+            "cart_cleared"
+          ],
+          "confidence": "medium"
+        },
+        "required_json_keys": [
+          "base_url",
+          "kubectl_namespace",
+          "verification_contract"
+        ],
+        "timeout_seconds": 45,
+        "system_prompt": "You are a bounded dispatcher. Emit strict JSON only. Do not execute tools."
+      }
+    },
     {
       "id": "frontend_health",
       "name": "Check frontend health",
       "type": "script",
-      "action": "BASE_URL=\"${BOUTIQUE_FRONTEND_BASE_URL:-http://127.0.0.1:18080}\"; COOKIE_JAR=/tmp/synapse-boutique-checkout-cookie.txt; rm -f \"$COOKIE_JAR\"; curl -fsS -c \"$COOKIE_JAR\" \"$BASE_URL/_healthz\"",
+      "action": "BASE_URL='{{dispatch.base_url}}'; if [ -z \"$BASE_URL\" ]; then BASE_URL=\"${BOUTIQUE_FRONTEND_BASE_URL:-http://127.0.0.1:18080}\"; fi; COOKIE_JAR=/tmp/synapse-boutique-checkout-cookie.txt; rm -f \"$COOKIE_JAR\"; curl -fsS -c \"$COOKIE_JAR\" \"$BASE_URL/_healthz\"",
       "config": {
         "timeout_seconds": 20
       }
@@ -23,7 +124,7 @@
       "id": "discover_product",
       "name": "Discover product id",
       "type": "script",
-      "action": "BASE_URL=\"${BOUTIQUE_FRONTEND_BASE_URL:-http://127.0.0.1:18080}\"; COOKIE_JAR=/tmp/synapse-boutique-checkout-cookie.txt; curl -fsS -c \"$COOKIE_JAR\" -b \"$COOKIE_JAR\" \"$BASE_URL/\" | grep -oE '/product/[A-Z0-9]+' | head -n1 | cut -d/ -f3",
+      "action": "BASE_URL='{{dispatch.base_url}}'; if [ -z \"$BASE_URL\" ]; then BASE_URL=\"${BOUTIQUE_FRONTEND_BASE_URL:-http://127.0.0.1:18080}\"; fi; COOKIE_JAR=/tmp/synapse-boutique-checkout-cookie.txt; curl -fsS -c \"$COOKIE_JAR\" -b \"$COOKIE_JAR\" \"$BASE_URL/\" | grep -oE '/product/[A-Z0-9]+' | head -n1 | cut -d/ -f3",
       "config": {
         "timeout_seconds": 30,
         "episode_handle": "product_id"
@@ -33,7 +134,7 @@
       "id": "add_to_cart",
       "name": "Add product to cart",
       "type": "script",
-      "action": "BASE_URL=\"${BOUTIQUE_FRONTEND_BASE_URL:-http://127.0.0.1:18080}\"; COOKIE_JAR=/tmp/synapse-boutique-checkout-cookie.txt; curl -sS -c \"$COOKIE_JAR\" -b \"$COOKIE_JAR\" -X POST \"$BASE_URL/cart\" --data-urlencode \"product_id={{discover_product}}\" --data-urlencode 'quantity=1' -D - -o /dev/null",
+      "action": "BASE_URL='{{dispatch.base_url}}'; if [ -z \"$BASE_URL\" ]; then BASE_URL=\"${BOUTIQUE_FRONTEND_BASE_URL:-http://127.0.0.1:18080}\"; fi; COOKIE_JAR=/tmp/synapse-boutique-checkout-cookie.txt; curl -sS -c \"$COOKIE_JAR\" -b \"$COOKIE_JAR\" -X POST \"$BASE_URL/cart\" --data-urlencode \"product_id={{discover_product}}\" --data-urlencode 'quantity=1' -D - -o /dev/null",
       "config": {
         "timeout_seconds": 30
       }
@@ -52,7 +153,7 @@
       "id": "verify_cart_after_add",
       "name": "Verify cart after add",
       "type": "script",
-      "action": "BASE_URL=\"${BOUTIQUE_FRONTEND_BASE_URL:-http://127.0.0.1:18080}\"; COOKIE_JAR=/tmp/synapse-boutique-checkout-cookie.txt; if curl -fsS -c \"$COOKIE_JAR\" -b \"$COOKIE_JAR\" \"$BASE_URL/cart\" | grep -q 'SKU #{{discover_product}}'; then echo 'cart_contains_product'; else echo 'cart_missing_product'; fi",
+      "action": "BASE_URL='{{dispatch.base_url}}'; if [ -z \"$BASE_URL\" ]; then BASE_URL=\"${BOUTIQUE_FRONTEND_BASE_URL:-http://127.0.0.1:18080}\"; fi; COOKIE_JAR=/tmp/synapse-boutique-checkout-cookie.txt; if curl -fsS -c \"$COOKIE_JAR\" -b \"$COOKIE_JAR\" \"$BASE_URL/cart\" | grep -q 'SKU #{{discover_product}}'; then echo 'cart_contains_product'; else echo 'cart_missing_product'; fi",
       "config": {
         "timeout_seconds": 30
       }
@@ -61,7 +162,7 @@
       "id": "place_order",
       "name": "Place order",
       "type": "script",
-      "action": "BASE_URL=\"${BOUTIQUE_FRONTEND_BASE_URL:-http://127.0.0.1:18080}\"; COOKIE_JAR=/tmp/synapse-boutique-checkout-cookie.txt; curl -sS -c \"$COOKIE_JAR\" -b \"$COOKIE_JAR\" -X POST \"$BASE_URL/cart/checkout\" --data-urlencode 'email=synapse@example.com' --data-urlencode 'street_address=1600 Amphitheatre Pkwy' --data-urlencode 'zip_code=94043' --data-urlencode 'city=Mountain View' --data-urlencode 'state=CA' --data-urlencode 'country=United States' --data-urlencode 'credit_card_number=4432801561520454' --data-urlencode 'credit_card_expiration_month=12' --data-urlencode 'credit_card_expiration_year=2030' --data-urlencode 'credit_card_cvv=672' -w '\nHTTP_STATUS=%{http_code}\n'",
+      "action": "BASE_URL='{{dispatch.base_url}}'; if [ -z \"$BASE_URL\" ]; then BASE_URL=\"${BOUTIQUE_FRONTEND_BASE_URL:-http://127.0.0.1:18080}\"; fi; COOKIE_JAR=/tmp/synapse-boutique-checkout-cookie.txt; curl -sS -c \"$COOKIE_JAR\" -b \"$COOKIE_JAR\" -X POST \"$BASE_URL/cart/checkout\" --data-urlencode 'email=synapse@example.com' --data-urlencode 'street_address=1600 Amphitheatre Pkwy' --data-urlencode 'zip_code=94043' --data-urlencode 'city=Mountain View' --data-urlencode 'state=CA' --data-urlencode 'country=United States' --data-urlencode 'credit_card_number=4432801561520454' --data-urlencode 'credit_card_expiration_month=12' --data-urlencode 'credit_card_expiration_year=2030' --data-urlencode 'credit_card_cvv=672' -w '\nHTTP_STATUS=%{http_code}\n'",
       "config": {
         "timeout_seconds": 60
       }
@@ -70,7 +171,7 @@
       "id": "verify_cart_after_checkout",
       "name": "Verify cart after checkout",
       "type": "script",
-      "action": "BASE_URL=\"${BOUTIQUE_FRONTEND_BASE_URL:-http://127.0.0.1:18080}\"; COOKIE_JAR=/tmp/synapse-boutique-checkout-cookie.txt; if curl -fsS -c \"$COOKIE_JAR\" -b \"$COOKIE_JAR\" \"$BASE_URL/cart\" | grep -q 'Your shopping cart is empty!'; then echo 'cart_cleared'; else echo 'cart_not_empty'; fi",
+      "action": "BASE_URL='{{dispatch.base_url}}'; if [ -z \"$BASE_URL\" ]; then BASE_URL=\"${BOUTIQUE_FRONTEND_BASE_URL:-http://127.0.0.1:18080}\"; fi; COOKIE_JAR=/tmp/synapse-boutique-checkout-cookie.txt; if curl -fsS -c \"$COOKIE_JAR\" -b \"$COOKIE_JAR\" \"$BASE_URL/cart\" | grep -q 'Your shopping cart is empty!'; then echo 'cart_cleared'; else echo 'cart_not_empty'; fi",
       "config": {
         "timeout_seconds": 30
       }
@@ -79,7 +180,7 @@
       "id": "checkout_logs",
       "name": "Fetch checkoutservice logs",
       "type": "script",
-      "action": "NS=\"${BOUTIQUE_KUBECTL_NAMESPACE:-default}\"; CTX=\"${BOUTIQUE_KUBECTL_CONTEXT:-}\"; if [[ -n \"$CTX\" ]]; then kubectl --context \"$CTX\" logs -n \"$NS\" deployment/checkoutservice --tail=120 || true; else kubectl logs -n \"$NS\" deployment/checkoutservice --tail=120 || true; fi",
+      "action": "NS='{{dispatch.kubectl_namespace}}'; if [ -z \"$NS\" ]; then NS=\"${BOUTIQUE_KUBECTL_NAMESPACE:-default}\"; fi; CTX='{{dispatch.kubectl_context}}'; if [ -z \"$CTX\" ]; then CTX=\"${BOUTIQUE_KUBECTL_CONTEXT:-}\"; fi; if [[ -n \"$CTX\" ]]; then kubectl --context \"$CTX\" logs -n \"$NS\" deployment/checkoutservice --tail=120 || true; else kubectl logs -n \"$NS\" deployment/checkoutservice --tail=120 || true; fi",
       "config": {
         "timeout_seconds": 40
       }
@@ -88,7 +189,7 @@
       "id": "payment_logs",
       "name": "Fetch paymentservice logs",
       "type": "script",
-      "action": "NS=\"${BOUTIQUE_KUBECTL_NAMESPACE:-default}\"; CTX=\"${BOUTIQUE_KUBECTL_CONTEXT:-}\"; if [[ -n \"$CTX\" ]]; then kubectl --context \"$CTX\" logs -n \"$NS\" deployment/paymentservice --tail=120 || true; else kubectl logs -n \"$NS\" deployment/paymentservice --tail=120 || true; fi",
+      "action": "NS='{{dispatch.kubectl_namespace}}'; if [ -z \"$NS\" ]; then NS=\"${BOUTIQUE_KUBECTL_NAMESPACE:-default}\"; fi; CTX='{{dispatch.kubectl_context}}'; if [ -z \"$CTX\" ]; then CTX=\"${BOUTIQUE_KUBECTL_CONTEXT:-}\"; fi; if [[ -n \"$CTX\" ]]; then kubectl --context \"$CTX\" logs -n \"$NS\" deployment/paymentservice --tail=120 || true; else kubectl logs -n \"$NS\" deployment/paymentservice --tail=120 || true; fi",
       "config": {
         "timeout_seconds": 40
       }
@@ -97,7 +198,7 @@
       "id": "shipping_logs",
       "name": "Fetch shippingservice logs",
       "type": "script",
-      "action": "NS=\"${BOUTIQUE_KUBECTL_NAMESPACE:-default}\"; CTX=\"${BOUTIQUE_KUBECTL_CONTEXT:-}\"; if [[ -n \"$CTX\" ]]; then kubectl --context \"$CTX\" logs -n \"$NS\" deployment/shippingservice --tail=120 || true; else kubectl logs -n \"$NS\" deployment/shippingservice --tail=120 || true; fi",
+      "action": "NS='{{dispatch.kubectl_namespace}}'; if [ -z \"$NS\" ]; then NS=\"${BOUTIQUE_KUBECTL_NAMESPACE:-default}\"; fi; CTX='{{dispatch.kubectl_context}}'; if [ -z \"$CTX\" ]; then CTX=\"${BOUTIQUE_KUBECTL_CONTEXT:-}\"; fi; if [[ -n \"$CTX\" ]]; then kubectl --context \"$CTX\" logs -n \"$NS\" deployment/shippingservice --tail=120 || true; else kubectl logs -n \"$NS\" deployment/shippingservice --tail=120 || true; fi",
       "config": {
         "timeout_seconds": 40
       }
@@ -153,6 +254,10 @@
     }
   ],
   "edges": [
+    {
+      "from": "dispatch_context",
+      "to": "frontend_health"
+    },
     {
       "from": "frontend_health",
       "to": "discover_product"
