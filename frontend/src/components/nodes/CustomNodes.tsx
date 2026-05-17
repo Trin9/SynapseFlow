@@ -62,7 +62,7 @@ function BaseNode({ data, selected, id }: NodeProps<FlowNode>) {
       <Handle
         type="target"
         position={Position.Left}
-        className="!w-3 !h-3 !bg-gray-400 !border-2 !border-white dark:!border-gray-800"
+        className="!w-3 !h-3 !bg-gray-400 !border-2 !border-white dark:!border-gray-800 !top-1/2 !-translate-y-1/2"
       />
 
       {/* Header */}
@@ -99,7 +99,7 @@ function BaseNode({ data, selected, id }: NodeProps<FlowNode>) {
       <Handle
         type="source"
         position={Position.Right}
-        className="!w-3 !h-3 !bg-gray-400 !border-2 !border-white dark:!border-gray-800"
+        className="!w-3 !h-3 !bg-gray-400 !border-2 !border-white dark:!border-gray-800 !top-1/2 !-translate-y-1/2"
       />
     </div>
   )
@@ -139,7 +139,7 @@ function SuperNodeBase({ data, selected, id }: NodeProps<FlowNode>) {
       <Handle
         type="target"
         position={Position.Left}
-        className="!w-3 !h-3 !bg-cyan-500 !border-2 !border-[#0c1220]"
+        className="!w-3 !h-3 !bg-cyan-500 !border-2 !border-[#0c1220] !top-1/2 !-translate-y-1/2"
       />
 
       <div className="px-4 py-3 border-b border-cyan-500/15">
@@ -240,7 +240,7 @@ function SuperNodeBase({ data, selected, id }: NodeProps<FlowNode>) {
       <Handle
         type="source"
         position={Position.Right}
-        className="!w-3 !h-3 !bg-cyan-500 !border-2 !border-[#0c1220]"
+        className="!w-3 !h-3 !bg-cyan-500 !border-2 !border-[#0c1220] !top-1/2 !-translate-y-1/2"
       />
     </div>
   )
@@ -306,8 +306,6 @@ function EpisodeOverviewNodeBase({ data, selected, id }: NodeProps<FlowNode>) {
   }
 
   return (
-    <>
-      <Handle type="target" position={Position.Left} className="!h-3 !w-3 !border-zinc-500 !bg-zinc-600" />
       <div
         className={cn(
           'relative w-[360px] rounded-2xl border-2 p-4 backdrop-blur-sm transition-all duration-200',
@@ -317,6 +315,11 @@ function EpisodeOverviewNodeBase({ data, selected, id }: NodeProps<FlowNode>) {
           'shadow-xl shadow-black/50'
         )}
       >
+        <Handle
+          type="target"
+          position={Position.Left}
+          className="!h-3 !w-3 !border-zinc-500 !bg-zinc-600 !top-1/2 !-translate-y-1/2"
+        />
         {/* Header row: title + verdict badge */}
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
@@ -392,9 +395,12 @@ function EpisodeOverviewNodeBase({ data, selected, id }: NodeProps<FlowNode>) {
           </button>
         </div>
 
+        <Handle
+          type="source"
+          position={Position.Right}
+          className="!h-3 !w-3 !border-zinc-500 !bg-zinc-600 !top-1/2 !-translate-y-1/2"
+        />
       </div>
-      <Handle type="source" position={Position.Right} className="!h-3 !w-3 !border-zinc-500 !bg-zinc-600" />
-    </>
   )
 }
 

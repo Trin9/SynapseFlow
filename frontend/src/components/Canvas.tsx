@@ -94,6 +94,76 @@ function computeFlowLayout(
     groups[l].push(id)
   }
 
+  // Reduce line crossings with a lightweight barycenter ordering.
+  // Each level is sorted by the average index of predecessor nodes in the
+  // previous level; ties fall back to semantic node priority.
+  const nodeTypeByID = new Map<string, string>()
+  for (const n of nodes) nodeTypeByID.set(n.id, n.data.nodeType as string)
+  const parentMap: Record<string, string[]> = {}
+  for (const id of nodeIds) parentMap[id] = []
+  for (const e of fwdEdges) {
+    if (parentMap[e.target] !== undefined) parentMap[e.target].push(e.source)
+  }
+
+  const typePriority = (nodeType: string | undefined): number => {
+    switch (nodeType) {
+      case 'start': return 0
+      case 'llm': return 1
+      case 'router': return 2
+      case 'mcp':
+      case 'mcp-tool': return 3
+      case 'script': return 4
+      case 'human': return 5
+      case 'end': return 6
+      default: return 99
+    }
+  }
+
+  const orderedLevels = Object.keys(groups).map(Number).sort((a, b) => a - b)
+  for (const level of orderedLevels) {
+    const ids = groups[level]
+    if (!ids || ids.length <= 1) continue
+    if (level === orderedLevels[0]) {
+      ids.sort((a, b) => {
+        const pa = typePriority(nodeTypeByID.get(a))
+        const pb = typePriority(nodeTypeByID.get(b))
+        if (pa !== pb) return pa - pb
+        return a.localeCompare(b)
+      })
+      continue
+    }
+
+    const prev = groups[level - 1] ?? []
+    const prevIdx = new Map<string, number>()
+    prev.forEach((id, idx) => prevIdx.set(id, idx))
+
+    const barycenter = (id: string): number => {
+      const parents = parentMap[id] ?? []
+      if (parents.length === 0) return Number.MAX_SAFE_INTEGER
+      let sum = 0
+      let count = 0
+      for (const p of parents) {
+        const idx = prevIdx.get(p)
+        if (idx !== undefined) {
+          sum += idx
+          count += 1
+        }
+      }
+      if (count === 0) return Number.MAX_SAFE_INTEGER
+      return sum / count
+    }
+
+    ids.sort((a, b) => {
+      const ba = barycenter(a)
+      const bb = barycenter(b)
+      if (ba !== bb) return ba - bb
+      const pa = typePriority(nodeTypeByID.get(a))
+      const pb = typePriority(nodeTypeByID.get(b))
+      if (pa !== pb) return pa - pb
+      return a.localeCompare(b)
+    })
+  }
+
   const posMap: Record<string, { x: number; y: number }> = {}
   for (const [lStr, ids] of Object.entries(groups)) {
     const x = START_X + Number(lStr) * LEVEL_WIDTH
@@ -167,6 +237,13 @@ export function Canvas() {
 
   const reactFlowRef = useRef<ReactFlowInstance<FlowNode, FlowEdge> | null>(null)
   const lastAutoFitKeyRef = useRef<string | null>(null)
+  const lastDrilldownEpisodeRef = useRef<string | null>(null)
+  const pendingFocusEpisodeRef = useRef<string | null>(null)
+
+  const handleBackToOverview = useCallback(() => {
+    if (activeSuperNodeId) pendingFocusEpisodeRef.current = activeSuperNodeId
+    exitDrilldown()
+  }, [activeSuperNodeId, exitDrilldown])
 
   const onDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
     event.preventDefault()
@@ -523,7 +600,7 @@ export function Canvas() {
             const drilldownEdges = edges.filter((e) => childSet.has(e.source) && childSet.has(e.target))
             const rawNodes = nodes.filter((n) => childSet.has(n.id))
             const layoutNodes = enableAutoLayout ? computeFlowLayout(rawNodes, drilldownEdges, {
-              levelWidth: 300, nodeHeight: 140, startX: 80, centerY: 320,
+              levelWidth: 400, nodeHeight: 200, startX: 80, centerY: 320,
             }) : rawNodes
             return annotateEpisodeBoundaryNodes(layoutNodes, childIds)
           })()
@@ -538,7 +615,7 @@ export function Canvas() {
             const drilldownEdges = edges.filter((e) => childSet.has(e.source) && childSet.has(e.target))
             const rawNodes = nodes.filter((n) => childIds.includes(n.id))
             const layoutNodes = enableAutoLayout ? computeFlowLayout(rawNodes, drilldownEdges, {
-              levelWidth: 300, nodeHeight: 140, startX: 80, centerY: 320,
+              levelWidth: 400, nodeHeight: 200, startX: 80, centerY: 320,
             }) : rawNodes
             return annotateEpisodeBoundaryNodes(layoutNodes, childIds)
           })()
@@ -589,39 +666,80 @@ export function Canvas() {
     if (!reactFlowRef.current) return
     if (visibleNodes.length === 0) return
 
+    if (isDrilldown && activeSuperNodeId) {
+      lastDrilldownEpisodeRef.current = activeSuperNodeId
+    }
+
     const fitKey = `${activeExecutionId ?? 'none'}:${viewLevel}:${activeSuperNodeId ?? 'root'}:${visibleNodes.length}`
     if (lastAutoFitKeyRef.current === fitKey) return
     lastAutoFitKeyRef.current = fitKey
 
     requestAnimationFrame(() => {
+      const focusEpisodeId = pendingFocusEpisodeRef.current ?? lastDrilldownEpisodeRef.current
+      if (viewLevel === 'overview' && focusEpisodeId && visibleNodes.some((n) => n.id === focusEpisodeId)) {
+        pendingFocusEpisodeRef.current = null
+        reactFlowRef.current?.fitView({
+          nodes: [{ id: focusEpisodeId }],
+          duration: 180,
+          padding: 0.3,
+          maxZoom: 1.25,
+        })
+        return
+      }
       reactFlowRef.current?.fitView({
         duration: 180,
         padding: 0.2,
         maxZoom: 1.25,
       })
     })
-  }, [activeExecutionId, activeSuperNodeId, useEpisodeRendererSwap, viewLevel, visibleNodes.length])
+  }, [activeExecutionId, activeSuperNodeId, isDrilldown, useEpisodeRendererSwap, viewLevel, visibleNodes.length])
 
   return (
     <div className="h-full w-full min-h-0 flex flex-col">
       {/* Drilldown breadcrumb bar */}
       {isDrilldown && (
-        <div className="flex items-center gap-2 px-4 py-1.5 bg-indigo-50 dark:bg-indigo-900/30 border-b border-indigo-200 dark:border-indigo-700 text-xs shrink-0">
-          <button
-            onClick={exitDrilldown}
-            className="text-indigo-500 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-200 font-medium transition-colors"
-          >
-            ← Overview
-          </button>
-          <span className="text-indigo-300 dark:text-indigo-600">/</span>
-          <span className="font-semibold text-indigo-700 dark:text-indigo-300">
-            {hasEpisodeOverview
-              ? reviewSwapNodes.find((n) => n.id === activeSuperNodeId)?.data.label ?? activeSuperNodeId
-              : nodes.find((n) => n.id === activeSuperNodeId)?.data.label ?? activeSuperNodeId}
-          </span>
-          <span className="text-indigo-400 dark:text-indigo-500 ml-1">
-            ({visibleNodes.length} child node{visibleNodes.length !== 1 ? 's' : ''})
-          </span>
+        <div className="shrink-0 border-b border-cyan-700/40 bg-[#0c1220]">
+          {(hasEpisodeOverview || hasDesignEpisodeOverview) && (
+            <div className="h-24 border-b border-cyan-900/40">
+              <ReactFlow<FlowNode, FlowEdge>
+                nodes={(hasEpisodeOverview ? reviewSwapNodes : designOverviewNodes).map((n) => ({
+                  ...n,
+                  className: n.id === activeSuperNodeId ? 'ring-2 ring-cyan-400/80' : '',
+                }))}
+                edges={hasEpisodeOverview ? reviewSwapEdges : designEpisodeEdges}
+                nodeTypes={nodeTypes}
+                edgeTypes={edgeTypes}
+                fitView
+                nodesDraggable={false}
+                nodesConnectable={false}
+                elementsSelectable={false}
+                panOnDrag={false}
+                zoomOnPinch={false}
+                zoomOnScroll={false}
+                zoomOnDoubleClick={false}
+                proOptions={{ hideAttribution: true }}
+              >
+                <Background gap={14} size={1} color="rgba(34, 211, 238, 0.12)" />
+              </ReactFlow>
+            </div>
+          )}
+          <div className="flex items-center gap-2 px-4 py-1.5 text-xs">
+            <button
+              onClick={handleBackToOverview}
+              className="text-cyan-300 hover:text-cyan-100 font-medium transition-colors"
+            >
+              ← Overview
+            </button>
+            <span className="text-cyan-700">/</span>
+            <span className="font-semibold text-cyan-200">
+              {hasEpisodeOverview
+                ? reviewSwapNodes.find((n) => n.id === activeSuperNodeId)?.data.label ?? activeSuperNodeId
+                : nodes.find((n) => n.id === activeSuperNodeId)?.data.label ?? activeSuperNodeId}
+            </span>
+            <span className="text-cyan-500 ml-1">
+              ({visibleNodes.length} child node{visibleNodes.length !== 1 ? 's' : ''})
+            </span>
+          </div>
         </div>
       )}
 

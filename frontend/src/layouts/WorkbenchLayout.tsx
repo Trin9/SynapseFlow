@@ -67,29 +67,7 @@ export function WorkbenchLayout() {
           </div>
         )}
 
-        {isReview && activeExecutionId && showTriggerCtx && (
-          <div className="w-[260px] shrink-0 border-r bg-card">
-            <TriggerContextPanel
-              executionId={activeExecutionId}
-              onClose={() => setShowTriggerCtx(false)}
-            />
-          </div>
-        )}
-
         <div className="flex-1 min-w-0 flex flex-col">
-          {isReview && activeExecutionId && (
-            <div className="h-9 border-b bg-card px-3 flex items-center justify-end shrink-0">
-              <Button
-                size="xs"
-                variant={showTriggerCtx ? 'secondary' : 'ghost'}
-                className={`text-[10px] ${showTriggerCtx ? 'text-amber-700 bg-amber-50 border-amber-200 dark:text-amber-300 dark:bg-amber-900/20 dark:border-amber-700' : ''}`}
-                onClick={() => setShowTriggerCtx(!showTriggerCtx)}
-              >
-                <AlignLeft className="w-3 h-3" />
-                {showTriggerCtx ? 'Hide Trigger' : 'Show Trigger'}
-              </Button>
-            </div>
-          )}
           {isReview && !activeExecutionId && (
             <div className="h-16 border-b bg-card px-4 py-2 flex items-center text-sm text-muted-foreground">
               Loading focused episode context...
@@ -101,7 +79,38 @@ export function WorkbenchLayout() {
               Preparing execution narrative and process trace anchors...
             </div>
           )}
-          <div className="flex-1 min-h-0">
+          <div className="flex-1 min-h-0 relative">
+            {isReview && activeExecutionId && (
+              <div className="absolute left-3 top-3 z-20 flex items-start gap-2">
+                <Button
+                  size="xs"
+                  variant={showTriggerCtx ? 'secondary' : 'ghost'}
+                  className={`text-[10px] border ${showTriggerCtx ? 'text-amber-300 bg-amber-900/30 border-amber-700' : 'text-cyan-200 bg-[#0c1220]/90 border-cyan-900/50 hover:bg-[#132038]'}`}
+                  onClick={() => setShowTriggerCtx(!showTriggerCtx)}
+                >
+                  <AlignLeft className="w-3 h-3" />
+                  Trigger Context
+                </Button>
+
+                <AnimatePresence>
+                  {showTriggerCtx && (
+                    <motion.div
+                      key="trigger-context-float"
+                      initial={{ opacity: 0, x: -12 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -12 }}
+                      transition={{ duration: 0.18 }}
+                      className="w-[320px] max-w-[calc(100vw-5rem)] h-[360px] border rounded-lg overflow-hidden shadow-xl bg-card"
+                    >
+                      <TriggerContextPanel
+                        executionId={activeExecutionId}
+                        onClose={() => setShowTriggerCtx(false)}
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
             <Canvas />
           </div>
           {isReview && activeExecutionId && <ProcessTraceTray />}

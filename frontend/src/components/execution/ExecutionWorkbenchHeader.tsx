@@ -83,46 +83,53 @@ export function ExecutionWorkbenchHeader({
 
         <button
           onClick={() => setShowLibrary(!showLibrary)}
-          disabled={isReview}
           className={`px-2 py-1 text-[11px] rounded border transition-colors ${
-            showLibrary && !isReview
+            showLibrary
               ? 'bg-slate-200 text-slate-900 border-slate-200'
               : 'border-slate-700 text-slate-200 hover:bg-slate-800'
-          } disabled:opacity-30 disabled:cursor-not-allowed`}
+          }`}
         >
-          Load
+          Load Workflow
         </button>
-        <button
-          onClick={onClear}
-          disabled={isReview || isRunning || nodesCount === 0}
-          className="px-2 py-1 text-[11px] rounded border border-slate-700 text-slate-200 hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed"
-        >
-          Clear
-        </button>
-        <button
-          onClick={onRun}
-          disabled={isReview || isRunning || nodesCount === 0}
-          className="px-2.5 py-1 text-[11px] rounded bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-30 disabled:cursor-not-allowed font-medium"
-          title="Run workflow"
-        >
-          ▶ {isRunning ? 'Running' : 'Run'}
-        </button>
-        <button
-          onClick={onPause}
-          disabled={isReview || !isRunning}
-          className="px-2 py-1 text-[11px] rounded border border-slate-700 text-slate-200 hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed"
-          title="Pause execution"
-        >
-          ⏸
-        </button>
-        <button
-          onClick={onStop}
-          disabled={isReview || !isRunning}
-          className="px-2 py-1 text-[11px] rounded border border-slate-700 text-slate-200 hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed"
-          title="Stop execution"
-        >
-          ⏹
-        </button>
+
+        {!isReview && (
+          <button
+            onClick={onClear}
+            disabled={isRunning || nodesCount === 0}
+            className="px-2 py-1 text-[11px] rounded border border-slate-700 text-slate-200 hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            Clear
+          </button>
+        )}
+
+        {isReview && (
+          <>
+            <button
+              onClick={onRun}
+              disabled={isRunning || nodesCount === 0}
+              className="px-2.5 py-1 text-[11px] rounded bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-30 disabled:cursor-not-allowed font-medium"
+              title="Run workflow"
+            >
+              ▶ {isRunning ? 'Running' : 'Run'}
+            </button>
+            <button
+              onClick={onPause}
+              disabled={!isRunning}
+              className="px-2 py-1 text-[11px] rounded border border-slate-700 text-slate-200 hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Pause execution"
+            >
+              ⏸
+            </button>
+            <button
+              onClick={onStop}
+              disabled={!isRunning}
+              className="px-2 py-1 text-[11px] rounded border border-slate-700 text-slate-200 hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Stop execution"
+            >
+              ⏹
+            </button>
+          </>
+        )}
 
         <button
           onClick={onSave}
@@ -132,16 +139,18 @@ export function ExecutionWorkbenchHeader({
           Export
         </button>
 
-        <button
-          onClick={() => setShowHistory(!showHistory)}
-          className={`px-2 py-1 text-[11px] rounded border transition-colors ${
-            showHistory
-              ? 'bg-slate-200 text-slate-900 border-slate-200'
-              : 'border-slate-700 text-slate-200 hover:bg-slate-800'
-          }`}
-        >
-          History
-        </button>
+        {isReview && (
+          <button
+            onClick={() => setShowHistory(!showHistory)}
+            className={`px-2 py-1 text-[11px] rounded border transition-colors ${
+              showHistory
+                ? 'bg-slate-200 text-slate-900 border-slate-200'
+                : 'border-slate-700 text-slate-200 hover:bg-slate-800'
+            }`}
+          >
+            History
+          </button>
+        )}
 
         <input
           type="text"

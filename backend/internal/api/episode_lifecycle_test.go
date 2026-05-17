@@ -418,10 +418,10 @@ func TestBuildEpisodeDossier_PrefersDesignExpectedBehavior(t *testing.T) {
 			},
 		},
 		Verdict: &models.EpisodeVerdict{
-			Result:       models.EpisodeResultPass,
-			Confidence:   models.EpisodeConfidenceHigh,
-			Conclusion:   "Design expectations are satisfied.",
-			CausalChain:  []string{"fallback causal chain item"},
+			Result:          models.EpisodeResultPass,
+			Confidence:      models.EpisodeConfidenceHigh,
+			Conclusion:      "Design expectations are satisfied.",
+			CausalChain:     []string{"fallback causal chain item"},
 			Recommendations: []string{"keep monitoring"},
 		},
 	}
