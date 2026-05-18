@@ -9,11 +9,124 @@
     "pattern": "bounded-agent-loop",
     "episode_type": "investigation_step"
   },
+  "_protocols": {
+    "DispatchContext": {
+      "type": "object",
+      "required": [
+        "issue_type",
+        "service",
+        "repo_hints",
+        "scope_hints",
+        "log_strategy",
+        "verification_contract",
+        "confidence"
+      ],
+      "properties": {
+        "issue_type": { "type": "string", "description": "Incident category inferred from trigger packet" },
+        "service": { "type": "string", "description": "Primary impacted service name" },
+        "repo_hints": {
+          "type": "array",
+          "description": "Candidate repository roots ordered by confidence",
+          "items": { "type": "string" }
+        },
+        "scope_hints": {
+          "type": "array",
+          "description": "Candidate code scopes ordered by confidence",
+          "items": { "type": "string" }
+        },
+        "log_strategy": { "type": "string", "description": "Preferred log retrieval strategy" },
+        "verification_contract": { "type": "string", "description": "What evidence quality is required before finish_report" },
+        "recommended_first_query": { "type": "string", "description": "High-signal first keyword to search" },
+        "confidence": { "type": "string", "description": "Dispatcher confidence: high|medium|low" }
+      }
+    },
+    "Plan": {
+      "oneOf": [
+        {
+          "title": "SearchCodeAction",
+          "type": "object",
+          "required": ["next_action", "reason", "action_params", "done"],
+          "properties": {
+            "next_action": { "const": "search_code" },
+            "reason": { "type": "string" },
+            "done": { "const": false },
+            "report": { "type": "string" },
+            "action_params": {
+              "type": "object",
+              "required": ["repo_root", "scope", "query"],
+              "properties": {
+                "repo_root": { "type": "string", "description": "Absolute repository root" },
+                "scope": { "type": "string", "description": "Relative path scope such as src/checkout" },
+                "query": { "type": "string", "description": "Code search keyword" }
+              }
+            }
+          }
+        },
+        {
+          "title": "FetchSnippetAction",
+          "type": "object",
+          "required": ["next_action", "reason", "action_params", "done"],
+          "properties": {
+            "next_action": { "const": "fetch_snippet" },
+            "reason": { "type": "string" },
+            "done": { "const": false },
+            "report": { "type": "string" },
+            "action_params": {
+              "type": "object",
+              "required": ["repo_root", "scope"],
+              "properties": {
+                "repo_root": { "type": "string", "description": "Absolute repository root" },
+                "workdir": { "type": "string", "description": "Relative working dir under repo root; use synapse for labctl" },
+                "scope": { "type": "string", "description": "Relative file path" },
+                "symbol": { "type": "string", "description": "Optional symbol name" },
+                "line": { "type": "integer", "description": "Optional line number" }
+              }
+            }
+          }
+        },
+        {
+          "title": "SearchLogsAction",
+          "type": "object",
+          "required": ["next_action", "reason", "action_params", "done"],
+          "properties": {
+            "next_action": { "const": "search_logs" },
+            "reason": { "type": "string" },
+            "done": { "const": false },
+            "report": { "type": "string" },
+            "action_params": {
+              "type": "object",
+              "required": ["repo_root", "service", "query"],
+              "properties": {
+                "repo_root": { "type": "string", "description": "Absolute repository root" },
+                "service": { "type": "string", "description": "Docker compose service name" },
+                "query": { "type": "string", "description": "Log search keyword" }
+              }
+            }
+          }
+        },
+        {
+          "title": "FinishReportAction",
+          "type": "object",
+          "required": ["next_action", "done", "report", "reason", "action_params"],
+          "properties": {
+            "next_action": { "const": "finish_report" },
+            "reason": { "type": "string" },
+            "done": { "const": true },
+            "report": { "type": "string", "description": "Final root-cause report" },
+            "action_params": {
+              "type": "object",
+              "properties": {}
+            }
+          }
+        }
+      ]
+    }
+  },
   "episodes": [
     {
       "id": "episode_signal_dispatch",
       "label": "Signal Intake and Problem Dispatch",
-      "summary": "Replay incident signal and produce structured dispatch context (issue type, repo root, code scope, log strategy, verification contract).",
+      "summary": "Replay incident signal and produce inferred dispatch context (issue type, service, repo/scope hints, log strategy, verification contract).",
       "expected_behaviors": [
         "replay produces reproducible incident packet",
         "dispatcher emits structured prior context for downstream retrieval"
@@ -30,8 +143,9 @@
         "outputs": [
           "incident_packet",
           "dispatch.issue_type",
-          "dispatch.repo_root",
-          "dispatch.code_scope",
+          "dispatch.service",
+          "dispatch.repo_hints",
+          "dispatch.scope_hints",
           "dispatch.log_strategy",
           "dispatch.verification_contract"
         ]
@@ -60,12 +174,14 @@
         "inputs": [
           "incident_packet",
           "dispatch.issue_type",
-          "dispatch.repo_root",
-          "dispatch.code_scope",
+          "dispatch.service",
+          "dispatch.repo_hints",
+          "dispatch.scope_hints",
           "dispatch.log_strategy"
         ],
         "outputs": [
           "plan.next_action",
+          "plan.action_params",
           "retrieved_evidence",
           "root_cause_hypothesis",
           "plan.report",
@@ -88,55 +204,39 @@
       "id": "dispatch_context",
       "name": "Analyze trigger and dispatch context",
       "type": "llm",
-      "action": "You are a bounded dispatch node for incident investigation. Read the trigger packet and emit strict JSON for downstream evidence collection.\n\nTrigger packet:\n{{replay_trigger}}\n\nReturn JSON keys:\n- issue_type\n- repo_root\n- code_scope\n- log_strategy\n- verification_contract\n- recommended_first_query\n- recommended_service\n- confidence",
+      "action": "You are a bounded dispatch node for incident investigation. Read the trigger packet and emit strict JSON for downstream evidence collection.\n\nTrigger packet:\n{{replay_trigger}}\n\nReturn JSON keys:\n- issue_type\n- service\n- repo_hints (array of candidate absolute repo roots, best-first)\n- scope_hints (array of candidate relative scopes, best-first)\n- log_strategy\n- verification_contract\n- recommended_first_query\n- confidence",
       "config": {
         "json_mode": true,
         "temperature": 0,
         "state_key": "dispatch",
         "parse_json_output": true,
-        "json_defaults": {
-          "issue_type": "dependency_unreachable",
-          "repo_root": "/home/trin/project/Synapse/deep-fault-lab",
-          "code_scope": "src/checkout",
-          "log_strategy": "docker_compose_logs",
-          "verification_contract": "locate concrete failing symbol or endpoint and provide root-cause explanation",
-          "recommended_first_query": "badAddress",
-          "recommended_service": "checkout",
-          "confidence": "medium"
-        },
+        "_protocol": "DispatchContext",
         "required_json_keys": [
           "issue_type",
-          "repo_root",
-          "code_scope",
+          "service",
+          "repo_hints",
+          "scope_hints",
           "log_strategy",
           "verification_contract"
         ],
         "timeout_seconds": 60,
-        "system_prompt": "You are a bounded dispatcher. Do not call tools. Do not output prose. Emit strict JSON only. Use conservative defaults when trigger packet is incomplete."
+        "system_prompt": "You are a bounded dispatcher. Do not call tools. Do not output prose. Emit strict JSON only. You must infer values from trigger packet and context. Do not rely on hardcoded scenario defaults. If uncertain, provide multiple candidates in repo_hints/scope_hints ordered by confidence and set confidence accordingly."
       }
     },
     {
       "id": "plan_next_step",
       "name": "Plan next bounded step",
       "type": "llm",
-      "action": "You are given dispatch context, incident packet, and latest evidence. Choose exactly one next action from: search_code, fetch_snippet, search_logs, finish_report. Prefer the smallest high-signal step.\n\nDispatch context:\n{{dispatch_context}}\n\nIncident packet:\n{{replay_trigger}}\n\nLatest code search results:\n{{search_code}}\n\nLatest code snippet:\n{{fetch_snippet}}\n\nLatest log search results:\n{{search_logs}}\n\nReturn valid JSON with keys: next_action, reason, scope, query, service, symbol, line, done, report.",
+      "action": "You are given dispatch context, incident packet, and latest evidence. Choose exactly one next action from: search_code, fetch_snippet, search_logs, finish_report. Prefer the smallest high-signal step.\n\nDispatch context:\n{{dispatch_context}}\n\nIncident packet:\n{{replay_trigger}}\n\nLatest code search results:\n{{search_code}}\n\nLatest code snippet:\n{{fetch_snippet}}\n\nLatest log search results:\n{{search_logs}}\n\nReturn strict JSON with keys: next_action, reason, action_params, done, report.\n\nAction-specific requirements:\n- search_code: action_params must contain repo_root, scope, query\n- fetch_snippet: action_params must contain repo_root, scope, and optionally symbol or line; include workdir when needed\n- search_logs: action_params must contain repo_root, service, query\n- finish_report: done=true, include concise report, action_params can be {}",
       "config": {
         "json_mode": true,
         "temperature": 0,
         "state_key": "plan",
         "parse_json_output": true,
-        "json_defaults": {
-          "done": false,
-          "report": "",
-          "scope": "",
-          "query": "",
-          "service": "",
-          "symbol": "",
-          "line": 0
-        },
-        "required_json_keys": ["next_action", "done"],
+        "_protocol": "Plan",
+        "required_json_keys": ["next_action", "done", "reason", "action_params"],
         "timeout_seconds": 90,
-        "system_prompt": "You are a bounded Synapse planner node. You must not invent tools or execute actions. Choose one allowed next action and emit strict JSON only. Prefer dispatch context as prior constraints (repo_root/code_scope/log_strategy), but you may override when evidence contradicts priors. Your JSON must always include: next_action, done, reason, scope, query, service, symbol, line, report. If the latest retrieval output is empty, change strategy instead of repeating the same query. Do not choose the same search_logs action twice in a row unless service or query materially changes. If incident packet contains a concrete identifier such as lookup badAddress, prefer code search using that literal. If evidence is sufficient, emit finish_report with done=true and concise report."
+        "system_prompt": "You are a bounded Synapse planner node. You must not invent tools or execute actions. Choose one allowed next action and emit strict JSON only. Use dispatch as prior context, but all executable parameters must be emitted under action_params for the chosen action. Do not output unrelated parameters for other actions. Always include explicit values for next_action, done, reason, action_params, and report (use empty string when not finishing). If latest retrieval output is empty, change strategy instead of repeating the same query. Do not choose search_logs twice in a row unless service or query materially changes. If incident packet contains a concrete identifier such as lookup badAddress, prefer search_code with that literal. If evidence is sufficient, emit finish_report with done=true and concise report."
       }
     },
     {
@@ -149,7 +249,7 @@
       "id": "search_code",
       "name": "Search code by keyword",
       "type": "script",
-      "action": "ROOT='{{dispatch.repo_root}}'; SCOPE='{{plan.scope}}'; if [ -z \"$SCOPE\" ]; then SCOPE='{{dispatch.code_scope}}'; fi; cd \"$ROOT\" && grep -RIn --exclude-dir .git -- '{{plan.query}}' \"$SCOPE\" | head -n 20",
+      "action": "ROOT='{{plan.action_params.repo_root}}'; SCOPE='{{plan.action_params.scope}}'; QUERY='{{plan.action_params.query}}'; cd \"$ROOT\" && grep -RIn --exclude-dir .git -- \"$QUERY\" \"$SCOPE\" | head -n 20",
       "config": {
         "timeout_seconds": 30
       }
@@ -158,7 +258,7 @@
       "id": "fetch_snippet",
       "name": "Fetch Go snippet",
       "type": "script",
-      "action": "ROOT='{{dispatch.repo_root}}'; cd \"$ROOT/synapse\" && if [ '{{plan.line}}' != '0' ] && [ '{{plan.line}}' != 'null' ] && [ -n '{{plan.line}}' ]; then go run ./cmd/labctl snippet go --file '{{plan.scope}}' --line '{{plan.line}}' --context-lines 18; else go run ./cmd/labctl snippet go --file '{{plan.scope}}' --symbol '{{plan.symbol}}'; fi",
+      "action": "ROOT='{{plan.action_params.repo_root}}'; WORKDIR='{{plan.action_params.workdir}}'; if [ -z \"$WORKDIR\" ]; then WORKDIR='synapse'; fi; cd \"$ROOT/$WORKDIR\" && if [ '{{plan.action_params.line}}' != '0' ] && [ '{{plan.action_params.line}}' != 'null' ] && [ -n '{{plan.action_params.line}}' ]; then go run ./cmd/labctl snippet go --file '{{plan.action_params.scope}}' --line '{{plan.action_params.line}}' --context-lines 18; else go run ./cmd/labctl snippet go --file '{{plan.action_params.scope}}' --symbol '{{plan.action_params.symbol}}'; fi",
       "config": {
         "timeout_seconds": 30
       }
@@ -167,7 +267,7 @@
       "id": "search_logs",
       "name": "Search service logs",
       "type": "script",
-      "action": "ROOT='{{dispatch.repo_root}}'; cd \"$ROOT\" && docker compose logs --tail=120 '{{plan.service}}' | grep -n -- '{{plan.query}}' | tail -n 20 || true",
+      "action": "ROOT='{{plan.action_params.repo_root}}'; SERVICE='{{plan.action_params.service}}'; QUERY='{{plan.action_params.query}}'; cd \"$ROOT\" && docker compose logs --tail=120 \"$SERVICE\" | grep -n -- \"$QUERY\" | tail -n 20 || true",
       "config": {
         "timeout_seconds": 30
       }

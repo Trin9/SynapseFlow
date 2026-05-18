@@ -33,11 +33,14 @@ type DAGConfig struct {
 	Name        string            `json:"name"`
 	Description string            `json:"description,omitempty"`
 	Metadata    map[string]string `json:"metadata,omitempty"`
-	Episodes    []DesignEpisode   `json:"episodes,omitempty"`
-	Nodes       []Node            `json:"nodes"`
-	Edges       []Edge            `json:"edges"`
-	CreatedAt   time.Time         `json:"created_at,omitempty"`
-	UpdatedAt   time.Time         `json:"updated_at,omitempty"`
+	// Protocols defines optional interface contracts for node inputs/outputs.
+	// It is metadata for readability/validation and does not affect scheduler topology.
+	Protocols map[string]interface{} `json:"_protocols,omitempty"`
+	Episodes  []DesignEpisode        `json:"episodes,omitempty"`
+	Nodes     []Node                 `json:"nodes"`
+	Edges     []Edge                 `json:"edges"`
+	CreatedAt time.Time              `json:"created_at,omitempty"`
+	UpdatedAt time.Time              `json:"updated_at,omitempty"`
 }
 
 // DesignEpisode is a design-time episode specification attached to DAGConfig.
